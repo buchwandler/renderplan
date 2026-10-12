@@ -45,7 +45,6 @@ def _mapping(value: Any, field: str) -> Mapping[str, Any]:
     return cast(Mapping[str, Any], value)
 
 
-
 def _check_keys(data: Mapping[str, Any], allowed: set[str], field: str) -> None:
     unknown = set(data).difference(allowed)
     if unknown:
@@ -56,6 +55,7 @@ def _boolean(value: Any, field: str) -> bool:
     if not isinstance(value, bool):
         raise CodecError(f"{field} must be a boolean")
     return value
+
 
 def _integer(value: Any, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
@@ -102,6 +102,7 @@ def _constraint(value: Any, field: str) -> CapacityConstraint | None:
         guarantee=data.get("guarantee", "advisory"),
     )
 
+
 def _source_spans(value: Any, field: str) -> tuple[SourceSpan, ...]:
     if not isinstance(value, list):
         raise CodecError(f"{field} must be an array of tables")
@@ -131,7 +132,9 @@ def _token_bundle(value: Any) -> TokenBundle | None:
     for index, pair in enumerate(raw_span):
         if not isinstance(pair, list) or len(pair) != 2:
             raise CodecError(f"token.span[{index}] must be [start, end]")
-        span.append((_integer(pair[0], "token.span start"), _integer(pair[1], "token.span end")))
+        span.append(
+            (_integer(pair[0], "token.span start"), _integer(pair[1], "token.span end"))
+        )
 
     def sparse(name: str) -> tuple[tuple[int, str], ...]:
         raw = data.get(name, [])
@@ -176,7 +179,16 @@ def _speech_controls(value: Any) -> tuple[SpeechControl, ...]:
 def profile_from_dict(raw: Mapping[str, Any]) -> RenderProfile:
     _check_keys(
         raw,
-        {"format", "schema_version", "profile_id", "producer", "default_role", "planning", "pauses", "roles"},
+        {
+            "format",
+            "schema_version",
+            "profile_id",
+            "producer",
+            "default_role",
+            "planning",
+            "pauses",
+            "roles",
+        },
         "renderprofile",
     )
     roles_raw = _mapping(raw.get("roles"), "roles")
@@ -186,24 +198,45 @@ def profile_from_dict(raw: Mapping[str, Any]) -> RenderProfile:
         data = _mapping(role_value, role_field)
         _check_keys(data, {"language", "binding", "requirements", "capacity"}, role_field)
         req_data = _mapping(data.get("requirements", {}), f"{role_field}.requirements")
-        _check_keys(req_data, {"token_fields", "frontend", "pronunciation"}, f"{role_field}.requirements")
+        _check_keys(
+            req_data,
+            {"token_fields", "frontend", "pronunciation"},
+            f"{role_field}.requirements",
+        )
         cap_data = _mapping(data.get("capacity", {}), f"{role_field}.capacity")
         _check_keys(cap_data, {"planner", "renderer"}, f"{role_field}.capacity")
         roles[name] = RoleProfile(
             language=str(data.get("language", "")),
             binding=dict(_mapping(data.get("binding"), f"{role_field}.binding")),
             requirements=RoleRequirements(
-                token_fields=_strings(req_data.get("token_fields", []), f"{role_field}.requirements.token_fields"),
+                token_fields=_strings(
+                    req_data.get("token_fields", []), f"{role_field}.requirements.token_fields"
+                ),
                 frontend=str(req_data.get("frontend", "renderer")),
                 pronunciation=str(req_data.get("pronunciation", "renderer")),
             ),
-            planner_capacity=_constraint(cap_data.get("planner"), f"{role_field}.capacity.planner"),
-            renderer_capacity=_constraint(cap_data.get("renderer"), f"{role_field}.capacity.renderer"),
+            planner_capacity=_constraint(
+                cap_data.get("planner"), f"{role_field}.capacity.planner"
+            ),
+            renderer_capacity=_constraint(
+                cap_data.get("renderer"), f"{role_field}.capacity.renderer"
+            ),
         )
     planning_raw = _mapping(raw.get("planning", {}), "planning")
     _check_keys(planning_raw, {"split", "capacity_fallback"}, "planning")
     pauses_raw = _mapping(raw.get("pauses", {}), "pauses")
-    pause_fields = {"mode", "x_weak", "weak", "medium", "strong", "x_strong", "clause", "sentence", "paragraph", "voice_change"}
+    pause_fields = {
+        "mode",
+        "x_weak",
+        "weak",
+        "medium",
+        "strong",
+        "x_strong",
+        "clause",
+        "sentence",
+        "paragraph",
+        "voice_change",
+    }
     _check_keys(pauses_raw, pause_fields, "pauses")
     durations = {
         key: _duration_ms(value, f"pauses.{key}")
@@ -230,6 +263,7 @@ def profile_from_dict(raw: Mapping[str, Any]) -> RenderProfile:
         schema_version=_integer(raw.get("schema_version"), "schema_version"),
     )
 
+
 def profile_to_dict(profile: RenderProfile) -> dict[str, Any]:
     data: dict[str, Any] = {
         "format": profile.format,
@@ -248,7 +282,15 @@ def profile_to_dict(profile: RenderProfile) -> dict[str, Any]:
 def plan_from_dict(raw: Mapping[str, Any]) -> RenderPlan:
     _check_keys(
         raw,
-        {"format", "schema_version", "plan_id", "source_plan_id", "render_profile_id", "producer", "flow"},
+        {
+            "format",
+            "schema_version",
+            "plan_id",
+            "source_plan_id",
+            "render_profile_id",
+            "producer",
+            "flow",
+        },
         "renderplan",
     )
     flow_raw = raw.get("flow")
@@ -262,7 +304,23 @@ def plan_from_dict(raw: Mapping[str, Any]) -> RenderPlan:
         if kind == "speech":
             _check_keys(
                 item,
-                {"kind", "number", "segment_id", "wav", "text", "language", "role", "source", "split_reason", "planning_level", "semantic_end", "preflight_required", "binding", "token", "control"},
+                {
+                    "kind",
+                    "number",
+                    "segment_id",
+                    "wav",
+                    "text",
+                    "language",
+                    "role",
+                    "source",
+                    "split_reason",
+                    "planning_level",
+                    "semantic_end",
+                    "preflight_required",
+                    "binding",
+                    "token",
+                    "control",
+                },
                 field,
             )
             number = _integer(item.get("number"), f"{field}.number")
@@ -282,7 +340,9 @@ def plan_from_dict(raw: Mapping[str, Any]) -> RenderPlan:
                     semantic_end=str(item.get("semantic_end", "none")),
                     tokens=_token_bundle(item.get("token")),
                     controls=_speech_controls(item.get("control", [])),
-                    preflight_required=_boolean(item.get("preflight_required", True), f"{field}.preflight_required"),
+                    preflight_required=_boolean(
+                        item.get("preflight_required", True), f"{field}.preflight_required"
+                    ),
                     segment_id=cast(str | None, item.get("segment_id")),
                 )
             )
@@ -317,6 +377,7 @@ def plan_from_dict(raw: Mapping[str, Any]) -> RenderPlan:
         format=str(raw.get("format", "")),
         schema_version=_integer(raw.get("schema_version"), "schema_version"),
     )
+
 
 def plan_to_dict(plan: RenderPlan) -> dict[str, Any]:
     data: dict[str, Any] = {
@@ -378,7 +439,18 @@ def plan_to_dict(plan: RenderPlan) -> dict[str, Any]:
 def preflight_from_dict(raw: Mapping[str, Any]) -> PreflightReport:
     _check_keys(
         raw,
-        {"format", "schema_version", "report_id", "render_plan_id", "source_plan_id", "render_profile_id", "status", "checks", "replan", "producer"},
+        {
+            "format",
+            "schema_version",
+            "report_id",
+            "render_plan_id",
+            "source_plan_id",
+            "render_profile_id",
+            "status",
+            "checks",
+            "replan",
+            "producer",
+        },
         "preflight",
     )
     checks_raw = raw.get("checks", [])
@@ -389,7 +461,20 @@ def preflight_from_dict(raw: Mapping[str, Any]) -> PreflightReport:
     for index, raw_check in enumerate(checks_raw):
         field = f"checks[{index}]"
         data = _mapping(raw_check, field)
-        _check_keys(data, {"segment_number", "segment_id", "status", "metric", "measured", "maximum", "source", "detail"}, field)
+        _check_keys(
+            data,
+            {
+                "segment_number",
+                "segment_id",
+                "status",
+                "metric",
+                "measured",
+                "maximum",
+                "source",
+                "detail",
+            },
+            field,
+        )
         checks_list.append(
             PreflightCheck(
                 segment_number=_integer(data.get("segment_number"), f"{field}.segment_number"),
@@ -406,7 +491,21 @@ def preflight_from_dict(raw: Mapping[str, Any]) -> PreflightReport:
     for index, raw_request in enumerate(replan_raw):
         field = f"replan[{index}]"
         data = _mapping(raw_request, field)
-        _check_keys(data, {"segment_number", "segment_id", "source", "current_level", "action", "reason", "metric", "measured", "maximum"}, field)
+        _check_keys(
+            data,
+            {
+                "segment_number",
+                "segment_id",
+                "source",
+                "current_level",
+                "action",
+                "reason",
+                "metric",
+                "measured",
+                "maximum",
+            },
+            field,
+        )
         replan_list.append(
             ReplanRequest(
                 segment_number=_integer(data.get("segment_number"), f"{field}.segment_number"),
@@ -433,6 +532,7 @@ def preflight_from_dict(raw: Mapping[str, Any]) -> PreflightReport:
         schema_version=_integer(raw.get("schema_version"), "schema_version"),
     )
 
+
 def preflight_to_dict(report: PreflightReport) -> dict[str, Any]:
     data: dict[str, Any] = {
         "format": report.format,
@@ -453,7 +553,15 @@ def preflight_to_dict(report: PreflightReport) -> dict[str, Any]:
 def manifest_from_dict(raw: Mapping[str, Any]) -> RenderManifest:
     _check_keys(
         raw,
-        {"format", "schema_version", "manifest_id", "render_plan_id", "complete", "producer", "speech"},
+        {
+            "format",
+            "schema_version",
+            "manifest_id",
+            "render_plan_id",
+            "complete",
+            "producer",
+            "speech",
+        },
         "render-manifest",
     )
     speech_raw = raw.get("speech", [])
@@ -463,7 +571,19 @@ def manifest_from_dict(raw: Mapping[str, Any]) -> RenderManifest:
     for index, raw_artifact in enumerate(speech_raw):
         field = f"speech[{index}]"
         data = _mapping(raw_artifact, field)
-        _check_keys(data, {"segment_number", "segment_id", "wav", "sha256", "frames", "sample_rate", "channels"}, field)
+        _check_keys(
+            data,
+            {
+                "segment_number",
+                "segment_id",
+                "wav",
+                "sha256",
+                "frames",
+                "sample_rate",
+                "channels",
+            },
+            field,
+        )
         speech_list.append(
             SpeechArtifact(
                 segment_number=_integer(data.get("segment_number"), f"{field}.segment_number"),
@@ -484,6 +604,7 @@ def manifest_from_dict(raw: Mapping[str, Any]) -> RenderManifest:
         format=str(raw.get("format", "")),
         schema_version=_integer(raw.get("schema_version"), "schema_version"),
     )
+
 
 def manifest_to_dict(manifest: RenderManifest) -> dict[str, Any]:
     data: dict[str, Any] = {

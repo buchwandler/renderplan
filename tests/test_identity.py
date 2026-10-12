@@ -30,7 +30,9 @@ def speech(number: int = 1, locator: str = "f000000.s000") -> SpeechItem:
 
 
 def test_producer_version_does_not_change_profile_identity() -> None:
-    other = replace(PROFILE, producer=Producer("voicerender", "9.9.9"), profile_id=None).with_identity()
+    other = replace(
+        PROFILE, producer=Producer("voicerender", "9.9.9"), profile_id=None
+    ).with_identity()
     assert other.profile_id == PROFILE.profile_id
 
 
@@ -49,6 +51,10 @@ def test_pause_is_part_of_plan_identity() -> None:
 
 
 def test_plan_producer_version_does_not_change_plan_identity() -> None:
-    value = RenderPlan(SOURCE, PROFILE_ID, (speech(),), producer=Producer("utterplan", "7.0.0")).with_identity()
-    other = replace(value, producer=Producer("utterplan", "7.9.0"), plan_id=None).with_identity()
+    value = RenderPlan(
+        SOURCE, PROFILE_ID, (speech(),), producer=Producer("utterplan", "7.0.0")
+    ).with_identity()
+    other = replace(
+        value, producer=Producer("utterplan", "7.9.0"), plan_id=None
+    ).with_identity()
     assert other.plan_id == value.plan_id

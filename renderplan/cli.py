@@ -57,6 +57,7 @@ def _summary(value: object) -> str:
         )
     raise AssertionError(type(value))
 
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="renderplan")
     parser.add_argument("--version", action="version", version=__version__)

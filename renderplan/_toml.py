@@ -31,10 +31,16 @@ def _value(value: Any) -> str:
 
 
 def _is_aot(value: Any) -> bool:
-    return isinstance(value, list) and bool(value) and all(isinstance(item, Mapping) for item in value)
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(isinstance(item, Mapping) for item in value)
+    )
 
 
-def _emit_mapping(lines: list[str], mapping: Mapping[str, Any], prefix: tuple[str, ...], *, header: bool) -> None:
+def _emit_mapping(
+    lines: list[str], mapping: Mapping[str, Any], prefix: tuple[str, ...], *, header: bool
+) -> None:
     scalars: list[tuple[str, Any]] = []
     tables: list[tuple[str, Mapping[str, Any]]] = []
     arrays: list[tuple[str, list[Mapping[str, Any]]]] = []

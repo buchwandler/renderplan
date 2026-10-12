@@ -13,7 +13,10 @@ def _plain(value: Any) -> Any:
     if hasattr(value, "identity_payload"):
         return _plain(value.identity_payload())
     if isinstance(value, Mapping):
-        return {str(key): _plain(item) for key, item in sorted(value.items(), key=lambda kv: str(kv[0]))}
+        return {
+            str(key): _plain(item)
+            for key, item in sorted(value.items(), key=lambda kv: str(kv[0]))
+        }
     if isinstance(value, tuple):
         return [_plain(item) for item in value]
     if isinstance(value, list):

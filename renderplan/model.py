@@ -29,7 +29,9 @@ _ALLOWED_TOKEN_FIELDS = frozenset({"span", "pos", "tag", "lemma", "morph"})
 _ALLOWED_SPLITS = frozenset({"paragraph", "sentence", "clause"})
 _ALLOWED_FALLBACKS = frozenset({"clause", "token"})
 _ALLOWED_SEMANTIC_ENDS = frozenset({"none", "clause", "sentence", "paragraph", "voice_change"})
-_ALLOWED_SPLIT_REASONS = frozenset({"policy", "capacity", "voice_change", "directive_change", "media"})
+_ALLOWED_SPLIT_REASONS = frozenset(
+    {"policy", "capacity", "voice_change", "directive_change", "media"}
+)
 _ALLOWED_PLANNING_LEVELS = frozenset({"paragraph", "sentence", "clause", "token", "hard"})
 
 
@@ -64,7 +66,11 @@ class CapacityConstraint:
 
     def __post_init__(self) -> None:
         require_nonempty(self.metric, "capacity.metric")
-        if isinstance(self.maximum, bool) or not isinstance(self.maximum, int) or self.maximum <= 0:
+        if (
+            isinstance(self.maximum, bool)
+            or not isinstance(self.maximum, int)
+            or self.maximum <= 0
+        ):
             raise ValidationError("capacity.maximum must be a positive integer")
         if self.guarantee not in {"hard", "advisory"}:
             raise ValidationError("capacity.guarantee must be 'hard' or 'advisory'")
@@ -153,13 +159,16 @@ class PausePolicy:
         for name, duration in self.durations_ms.items():
             require_nonempty(name, "pause name")
             if isinstance(duration, bool) or not isinstance(duration, int) or duration < 0:
-                raise ValidationError(f"pause {name!r} duration must be a non-negative integer ms")
+                raise ValidationError(
+                    f"pause {name!r} duration must be a non-negative integer ms"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {"mode": self.mode}
         for key, value in sorted(self.durations_ms.items()):
             data[key] = f"{value}ms"
         return data
+
 
 @dataclass(frozen=True, slots=True)
 class RenderProfile:
@@ -221,7 +230,6 @@ class SourceSpan:
         return {"locator": self.locator, "start": self.start, "end": self.end}
 
 
-
 @dataclass(frozen=True, slots=True)
 class SpeechControl:
     start: int
@@ -230,7 +238,10 @@ class SpeechControl:
     params: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if any(isinstance(value, bool) or not isinstance(value, int) for value in (self.start, self.end)):
+        if any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in (self.start, self.end)
+        ):
             raise ValidationError("control start/end must be integers")
         if self.start < 0 or self.end <= self.start:
             raise ValidationError("control must satisfy 0 <= start < end")
@@ -241,7 +252,13 @@ class SpeechControl:
         return (self.start, self.end, self.name, canonical_json_bytes(self.params))
 
     def to_dict(self) -> dict[str, Any]:
-        return {"start": self.start, "end": self.end, "name": self.name, "params": dict(self.params)}
+        return {
+            "start": self.start,
+            "end": self.end,
+            "name": self.name,
+            "params": dict(self.params),
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class TokenBundle:
@@ -277,7 +294,9 @@ class TokenBundle:
                     or token_index >= len(self.span)
                     or token_index <= previous_index
                 ):
-                    raise ValidationError(f"token.{field_name} has invalid or unordered token index {token_index}")
+                    raise ValidationError(
+                        f"token.{field_name} has invalid or unordered token index {token_index}"
+                    )
                 require_nonempty(value, f"token.{field_name} value")
                 previous_index = token_index
 
@@ -293,7 +312,9 @@ class TokenBundle:
             return True
         if field_name in {"pos", "tag"}:
             dense_values = self.pos if field_name == "pos" else self.tag
-            return len(dense_values) == len(self.span) and all(bool(value.strip()) for value in dense_values)
+            return len(dense_values) == len(self.span) and all(
+                bool(value.strip()) for value in dense_values
+            )
         if field_name in {"lemma", "morph"}:
             sparse_values = self.lemma if field_name == "lemma" else self.morph
             return tuple(index for index, _ in sparse_values) == tuple(range(len(self.span)))
@@ -323,6 +344,7 @@ class TokenBundle:
             data["morph"] = [[index, value] for index, value in self.morph]
         return data
 
+
 @dataclass(frozen=True, slots=True)
 class SpeechItem:
     number: int
@@ -341,7 +363,11 @@ class SpeechItem:
     kind: str = "speech"
 
     def __post_init__(self) -> None:
-        if isinstance(self.number, bool) or not isinstance(self.number, int) or self.number <= 0:
+        if (
+            isinstance(self.number, bool)
+            or not isinstance(self.number, int)
+            or self.number <= 0
+        ):
             raise ValidationError("speech.number must be a positive integer")
         require_nonempty(self.text, "speech.text")
         require_nonempty(self.language, "speech.language")
@@ -364,8 +390,13 @@ class SpeechItem:
                 raise ValidationError(f"speech.controls[{index}] must be a SpeechControl")
             if control.end > len(self.text):
                 raise ValidationError(f"speech.controls[{index}] exceeds speech text length")
-        if tuple(sorted(self.controls, key=lambda control: control.ordering_key())) != self.controls:
-            raise ValidationError("speech.controls must be ordered by start, end, name, and params")
+        if (
+            tuple(sorted(self.controls, key=lambda control: control.ordering_key()))
+            != self.controls
+        ):
+            raise ValidationError(
+                "speech.controls must be ordered by start, end, name, and params"
+            )
         if self.segment_id is not None:
             require_sha256_id(self.segment_id, "speech.segment_id")
             if self.segment_id != self.computed_id():
@@ -417,7 +448,11 @@ class PauseItem:
     kind: str = "pause"
 
     def __post_init__(self) -> None:
-        if isinstance(self.duration_ms, bool) or not isinstance(self.duration_ms, int) or self.duration_ms < 0:
+        if (
+            isinstance(self.duration_ms, bool)
+            or not isinstance(self.duration_ms, int)
+            or self.duration_ms < 0
+        ):
             raise ValidationError("pause.duration_ms must be a non-negative integer")
         require_nonempty(self.reason, "pause.reason")
         if self.pause_id is not None:
@@ -522,9 +557,15 @@ class RenderPlan:
             if isinstance(item, SpeechItem):
                 payload = item.plan_payload()
             elif isinstance(item, PauseItem):
-                payload = {**item.identity_payload(), "pause_id": item.pause_id or item.computed_id()}
+                payload = {
+                    **item.identity_payload(),
+                    "pause_id": item.pause_id or item.computed_id(),
+                }
             else:
-                payload = {**item.identity_payload(), "audio_id": item.audio_id or item.computed_id()}
+                payload = {
+                    **item.identity_payload(),
+                    "audio_id": item.audio_id or item.computed_id(),
+                }
             flow.append(payload)
         return {
             "format": self.format,
@@ -541,9 +582,13 @@ class RenderPlan:
         for speech in self.speech:
             role = profile.roles.get(speech.role)
             if role is None:
-                raise ValidationError(f"speech {speech.number} names unknown profile role {speech.role!r}")
+                raise ValidationError(
+                    f"speech {speech.number} names unknown profile role {speech.role!r}"
+                )
             if dict(speech.binding) != dict(role.binding):
-                raise ValidationError(f"speech {speech.number} binding does not match role {speech.role!r}")
+                raise ValidationError(
+                    f"speech {speech.number} binding does not match role {speech.role!r}"
+                )
             speech_language = speech.language.lower().replace("_", "-")
             role_language = role.language.lower().replace("_", "-")
             if not (
@@ -556,7 +601,9 @@ class RenderPlan:
                 )
             required_fields = role.requirements.token_fields
             if required_fields and speech.tokens is None:
-                raise ValidationError(f"speech {speech.number} is missing required token fields")
+                raise ValidationError(
+                    f"speech {speech.number} is missing required token fields"
+                )
             if speech.tokens is not None:
                 missing = [
                     field_name
@@ -582,6 +629,7 @@ class RenderPlan:
     def speech(self) -> tuple[SpeechItem, ...]:
         return tuple(item for item in self.flow if isinstance(item, SpeechItem))
 
+
 @dataclass(frozen=True, slots=True)
 class PreflightCheck:
     segment_number: int
@@ -602,8 +650,12 @@ class PreflightCheck:
         require_nonempty(self.metric, "preflight.metric")
         require_nonempty(self.source, "preflight.source")
         for field_name, value in (("measured", self.measured), ("maximum", self.maximum)):
-            if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
-                raise ValidationError(f"preflight.{field_name} must be a non-negative integer or null")
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or value < 0
+            ):
+                raise ValidationError(
+                    f"preflight.{field_name} must be a non-negative integer or null"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -650,8 +702,12 @@ class ReplanRequest:
         if self.metric is not None:
             require_nonempty(self.metric, "replan.metric")
         for field_name, value in (("measured", self.measured), ("maximum", self.maximum)):
-            if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
-                raise ValidationError(f"replan.{field_name} must be a non-negative integer or null")
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or value < 0
+            ):
+                raise ValidationError(
+                    f"replan.{field_name} must be a non-negative integer or null"
+                )
 
     def to_dict(self) -> dict[str, Any]:
         data: dict[str, Any] = {
@@ -700,8 +756,12 @@ class PreflightReport:
         for request in self.replan:
             if (request.segment_number, request.segment_id) not in check_keys:
                 raise ValidationError("replan request must refer to a checked segment")
-        if self.status == "ok" and (self.replan or any(item.status != "ok" for item in self.checks)):
-            raise ValidationError("ok preflight cannot contain failed checks or replan requests")
+        if self.status == "ok" and (
+            self.replan or any(item.status != "ok" for item in self.checks)
+        ):
+            raise ValidationError(
+                "ok preflight cannot contain failed checks or replan requests"
+            )
         if self.status == "replan" and not self.replan:
             raise ValidationError("replan preflight requires at least one replan request")
         if self.report_id is not None:
@@ -736,13 +796,20 @@ class PreflightReport:
         if self.render_profile_id != plan.render_profile_id:
             raise ValidationError("preflight render_profile_id does not match plan")
 
-        occurrences = {(speech.number, speech.segment_id or speech.computed_id()): speech for speech in plan.speech}
+        occurrences = {
+            (speech.number, speech.segment_id or speech.computed_id()): speech
+            for speech in plan.speech
+        }
         checks = {(check.segment_number, check.segment_id): check for check in self.checks}
         for key in checks:
             if key not in occurrences:
-                raise ValidationError(f"preflight check refers to unknown speech occurrence {key}")
+                raise ValidationError(
+                    f"preflight check refers to unknown speech occurrence {key}"
+                )
             if not occurrences[key].preflight_required:
-                raise ValidationError(f"preflight check refers to speech occurrence not requiring preflight {key}")
+                raise ValidationError(
+                    f"preflight check refers to speech occurrence not requiring preflight {key}"
+                )
         if self.status == "ok":
             missing = [
                 key
@@ -750,19 +817,29 @@ class PreflightReport:
                 if speech.preflight_required and key not in checks
             ]
             if missing:
-                raise ValidationError(f"ok preflight is missing required speech checks: {missing}")
+                raise ValidationError(
+                    f"ok preflight is missing required speech checks: {missing}"
+                )
         for request in self.replan:
             key = (request.segment_number, request.segment_id)
             speech = occurrences.get(key)
             matched_check = checks.get(key)
             if matched_check is None or matched_check.status != "too_long":
-                raise ValidationError(f"replan request {key} must refer to a failed too_long check")
+                raise ValidationError(
+                    f"replan request {key} must refer to a failed too_long check"
+                )
             if speech is None:
-                raise ValidationError(f"replan request refers to unknown speech occurrence {key}")
+                raise ValidationError(
+                    f"replan request refers to unknown speech occurrence {key}"
+                )
             if request.source != speech.source:
-                raise ValidationError(f"replan request {key} source does not match speech source coverage")
+                raise ValidationError(
+                    f"replan request {key} source does not match speech source coverage"
+                )
             if request.current_level != speech.planning_level:
-                raise ValidationError(f"replan request {key} current_level does not match speech planning_level")
+                raise ValidationError(
+                    f"replan request {key} current_level does not match speech planning_level"
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -817,7 +894,9 @@ class RenderManifest:
         if self.format != MANIFEST_FORMAT or self.schema_version != SCHEMA_VERSION:
             raise ValidationError("unsupported render manifest format/schema")
         require_sha256_id(self.render_plan_id, "render_plan_id")
-        occurrences = [(artifact.segment_number, artifact.segment_id) for artifact in self.speech]
+        occurrences = [
+            (artifact.segment_number, artifact.segment_id) for artifact in self.speech
+        ]
         if len(set(occurrences)) != len(occurrences):
             raise ValidationError("manifest speech contains duplicate occurrences")
         if self.manifest_id is not None:
@@ -848,7 +927,11 @@ class RenderManifest:
         included = {(item.segment_number, item.segment_id) for item in self.speech}
         extra = included - planned
         if extra:
-            raise ValidationError(f"manifest contains speech occurrences not in plan: {sorted(extra)}")
+            raise ValidationError(
+                f"manifest contains speech occurrences not in plan: {sorted(extra)}"
+            )
         missing = planned - included
         if self.complete and missing:
-            raise ValidationError(f"complete manifest is missing speech occurrences: {sorted(missing)}")
+            raise ValidationError(
+                f"complete manifest is missing speech occurrences: {sorted(missing)}"
+            )

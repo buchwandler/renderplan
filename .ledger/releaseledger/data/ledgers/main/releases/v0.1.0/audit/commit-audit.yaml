@@ -1,0 +1,176 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: v0.1.0
+git_base_ref: :root
+git_base_sha: 4b825dc642cb6eb9a060e54bf8d69288fbee4904
+git_head_ref: HEAD
+git_head_sha: eb2b0019413061d408879ee19d55b524135ac488
+git_range: :root..eb2b0019413061d408879ee19d55b524135ac488
+commit_count: 3
+rows:
+  - sha: 80930489c66d916982ca6c1d20ac4a9655617038
+    source_ref: git:80930489c66d916982ca6c1d20ac4a9655617038
+    short_sha: "8093048"
+    changed_paths: []
+    stats:
+      files_changed: 0
+      insertions: 0
+      deletions: 0
+    inspected: true
+    inspected_paths:
+      - .gitignore
+      - LICENSE
+      - README.md
+    observed_behavior:
+      The initial repository commit establishes licensing and repository
+      defaults; it introduces no runtime package behavior.
+    public_impact: none
+    decision: internal
+    stale: false
+    evidence_subject: Initial commit
+    notes: Covered by an internal release entry and omitted from the public changelog.
+  - sha: f9628ca3f4bfd4f4e595cc50803ebf6db69102af
+    source_ref: git:f9628ca3f4bfd4f4e595cc50803ebf6db69102af
+    short_sha: f9628ca
+    changed_paths:
+      - .codecrate.toml
+      - .gitignore
+      - .ledger/ledger.toml
+      - .ledger/releaseledger/.ledger-project.toml
+      - .ledger/releaseledger/config.toml
+      - .ledger/releaseledger/data/.ledger-project.toml
+      - .ledger/taskledger/.ledger-project.toml
+      - .ledger/taskledger/config.toml
+      - README.md
+      - examples/af_heart.renderprofile.toml
+      - examples/chapter.preflight.toml
+      - examples/chapter.render-manifest.toml
+      - examples/chapter.renderplan.toml
+      - examples/chapter.replan.preflight.toml
+      - pyproject.toml
+      - renderplan/__init__.py
+      - renderplan/__main__.py
+      - renderplan/_toml.py
+      - renderplan/cli.py
+      - renderplan/codec.py
+      - renderplan/errors.py
+      - renderplan/identity.py
+      - renderplan/model.py
+      - renderplan/py.typed
+      - renderplan/version.py
+      - tests/test_contracts.py
+      - tests/test_identity.py
+    stats:
+      files_changed: 27
+      insertions: 2248
+      deletions: 1
+    inspected: true
+    inspected_paths:
+      - .codecrate.toml
+      - .gitignore
+      - .ledger/ledger.toml
+      - .ledger/releaseledger/.ledger-project.toml
+      - .ledger/releaseledger/config.toml
+      - .ledger/releaseledger/data/.ledger-project.toml
+      - .ledger/taskledger/.ledger-project.toml
+      - .ledger/taskledger/config.toml
+      - README.md
+      - examples/af_heart.renderprofile.toml
+      - examples/chapter.preflight.toml
+      - examples/chapter.render-manifest.toml
+      - examples/chapter.renderplan.toml
+      - examples/chapter.replan.preflight.toml
+      - pyproject.toml
+      - renderplan/__init__.py
+      - renderplan/__main__.py
+      - renderplan/_toml.py
+      - renderplan/cli.py
+      - renderplan/codec.py
+      - renderplan/errors.py
+      - renderplan/identity.py
+      - renderplan/model.py
+      - renderplan/py.typed
+      - renderplan/version.py
+      - tests/test_contracts.py
+      - tests/test_identity.py
+    observed_behavior:
+      Introduces the engine-neutral Python contract package, TOML codecs,
+      deterministic identities, validation joins, examples, and automated tests for
+      render profiles, plans, preflight reports, and manifests.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: initial version"
+    notes: Covered by the initial public contract entry.
+  - sha: eb2b0019413061d408879ee19d55b524135ac488
+    source_ref: git:eb2b0019413061d408879ee19d55b524135ac488
+    short_sha: eb2b001
+    changed_paths:
+      - .github/workflows/codecov.yml
+      - .github/workflows/pre-commit.yml
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - .ledger/releaseledger/config.toml
+      - README.md
+      - docs/Makefile
+      - docs/conf.py
+      - docs/make.bat
+      - docs/make.py
+      - docs/requirements.txt
+      - examples/af_heart.renderprofile.toml
+      - examples/chapter.preflight.toml
+      - examples/chapter.render-manifest.toml
+      - examples/chapter.renderplan.toml
+      - examples/chapter.replan.preflight.toml
+      - renderplan/__init__.py
+      - renderplan/_toml.py
+      - renderplan/cli.py
+      - renderplan/codec.py
+      - renderplan/identity.py
+      - renderplan/model.py
+      - renderplan/version.py
+      - tests/test_contracts.py
+      - tests/test_identity.py
+    stats:
+      files_changed: 25
+      insertions: 1685
+      deletions: 471
+    inspected: true
+    inspected_paths:
+      - .github/workflows/codecov.yml
+      - .github/workflows/pre-commit.yml
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - .ledger/releaseledger/config.toml
+      - README.md
+      - docs/Makefile
+      - docs/conf.py
+      - docs/make.bat
+      - docs/make.py
+      - docs/requirements.txt
+      - examples/af_heart.renderprofile.toml
+      - examples/chapter.preflight.toml
+      - examples/chapter.render-manifest.toml
+      - examples/chapter.renderplan.toml
+      - examples/chapter.replan.preflight.toml
+      - renderplan/__init__.py
+      - renderplan/_toml.py
+      - renderplan/cli.py
+      - renderplan/codec.py
+      - renderplan/identity.py
+      - renderplan/model.py
+      - renderplan/version.py
+      - tests/test_contracts.py
+      - tests/test_identity.py
+    observed_behavior:
+      Expands contract semantics and validation around controls, generic
+      bindings, source provenance, operation ordering, identity behavior, examples,
+      and test coverage, and adds documentation, CI, coverage, and publishing workflows.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: prepare first release"
+    notes: Covered by behavior-specific contract, documentation, and workflow entries.

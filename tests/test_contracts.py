@@ -48,7 +48,9 @@ WAV_SHA = "sha256:" + "3" * 64
 BINDING = {"renderer": "kokoro", "voice": "af_heart", "target_id": "kokoro-v1"}
 
 
-def profile(*, required: tuple[str, ...] = (), producer_version: str = "0.2.0") -> RenderProfile:
+def profile(
+    *, required: tuple[str, ...] = (), producer_version: str = "0.2.0"
+) -> RenderProfile:
     return RenderProfile(
         default_role="narrator",
         producer=Producer("voicerender", producer_version),
@@ -118,7 +120,9 @@ def plan_identity(value: RenderPlan) -> str:
     return value.plan_id or value.computed_id()
 
 
-def check(item: SpeechItem, status: Literal["ok", "too_long", "error"] = "ok") -> PreflightCheck:
+def check(
+    item: SpeechItem, status: Literal["ok", "too_long", "error"] = "ok"
+) -> PreflightCheck:
     return PreflightCheck(
         segment_number=item.number,
         segment_id=item.segment_id or item.computed_id(),
@@ -145,12 +149,16 @@ def report(
         source_plan_id=source_plan_id or value.source_plan_id,
         render_profile_id=render_profile_id or value.render_profile_id,
         status=status,
-        checks=checks if checks is not None else tuple(check(item) for item in value.speech if item.preflight_required),
+        checks=checks
+        if checks is not None
+        else tuple(check(item) for item in value.speech if item.preflight_required),
         replan=replan,
     )
 
 
-def artifact(item: SpeechItem, *, number: int | None = None, segment_id: str | None = None) -> SpeechArtifact:
+def artifact(
+    item: SpeechItem, *, number: int | None = None, segment_id: str | None = None
+) -> SpeechArtifact:
     selected_number = item.number if number is None else number
     return SpeechArtifact(
         segment_number=selected_number,
@@ -172,10 +180,10 @@ def test_profile_roundtrip(tmp_path: Path) -> None:
     assert loaded.profile_id == value.profile_id
 
 
-
 def test_native_pause_mode_is_not_part_of_shared_profile_contract() -> None:
     with pytest.raises(ValidationError, match="manual or none"):
         PausePolicy(cast(Any, "native"))
+
 
 def test_renderplan_roundtrip_with_controls_and_generic_binding(tmp_path: Path) -> None:
     generic_binding = {
@@ -238,7 +246,9 @@ def test_segment_id_changes_when_text_changes() -> None:
 
 def test_segment_id_changes_when_binding_changes() -> None:
     item = speech()
-    changed = replace(item, binding={**BINDING, "voice": "another"}, segment_id=None).with_identity()
+    changed = replace(
+        item, binding={**BINDING, "voice": "another"}, segment_id=None
+    ).with_identity()
     assert item.segment_id != changed.segment_id
 
 
@@ -282,7 +292,9 @@ def test_validate_plan_against_profile_checks_role_binding_language_and_tokens()
 
     wrong_language = replace(speech(), language="fr-FR", segment_id=None).with_identity()
     with pytest.raises(ValidationError, match="language"):
-        plan(wrong_language, profile_value=required_profile).validate_against_profile(required_profile)
+        plan(wrong_language, profile_value=required_profile).validate_against_profile(
+            required_profile
+        )
 
 
 def test_required_sparse_token_field_must_be_complete() -> None:
@@ -301,7 +313,9 @@ def test_profile_identity_ignores_producer_version() -> None:
 
 def test_plan_identity_ignores_producer_version() -> None:
     value = plan(speech())
-    other = replace(value, producer=Producer("utterplan", "7.1.0"), plan_id=None).with_identity()
+    other = replace(
+        value, producer=Producer("utterplan", "7.1.0"), plan_id=None
+    ).with_identity()
     assert value.plan_id == other.plan_id
 
 
@@ -354,7 +368,9 @@ def test_replan_source_must_equal_failed_speech_source() -> None:
     item = speech()
     value = plan(item)
     request = replan_request(item, source=(SourceSpan("f000000.s000", 1, 8),))
-    checked = report(value, status="replan", checks=(check(item, "too_long"),), replan=(request,))
+    checked = report(
+        value, status="replan", checks=(check(item, "too_long"),), replan=(request,)
+    )
     with pytest.raises(ValidationError, match="source does not match"):
         checked.validate_against(value)
 
@@ -363,7 +379,9 @@ def test_replan_level_must_match_failed_speech_level() -> None:
     item = speech(planning_level="sentence")
     value = plan(item)
     request = replan_request(item, current_level="clause")
-    checked = report(value, status="replan", checks=(check(item, "too_long"),), replan=(request,))
+    checked = report(
+        value, status="replan", checks=(check(item, "too_long"),), replan=(request,)
+    )
     with pytest.raises(ValidationError, match="current_level"):
         checked.validate_against(value)
 
@@ -437,7 +455,10 @@ def test_zero_duration_pause_roundtrips_exactly(tmp_path: Path) -> None:
     save_plan(value, path)
     loaded = load_plan(path)
     assert loaded == value
-    assert [event.duration_ms for event in loaded.flow if isinstance(event, PauseItem)] == [0, 0]
+    assert [event.duration_ms for event in loaded.flow if isinstance(event, PauseItem)] == [
+        0,
+        0,
+    ]
 
 
 def test_unknown_contract_fields_are_rejected_at_multiple_levels() -> None:
@@ -452,12 +473,26 @@ def test_unknown_contract_fields_are_rejected_at_multiple_levels() -> None:
         profile_from_dict(raw_profile)
 
     item = speech(controls=(SpeechControl(0, 1, "emphasis"),))
-    raw_plan = {"format": "renderplan", "schema_version": 1, "source_plan_id": SOURCE_ID,
-                "render_profile_id": profile_identity(profile()), "flow": [
-                    {"kind": "speech", "number": 1, "segment_id": item.segment_id, "wav": item.wav,
-                     "text": item.text, "language": item.language, "role": item.role,
-                     "binding": dict(item.binding), "source": [span.to_dict() for span in item.source],
-                     "control": [{"start": 0, "end": 1, "name": "emphasis", "unexpected": 1}]}]}
+    raw_plan = {
+        "format": "renderplan",
+        "schema_version": 1,
+        "source_plan_id": SOURCE_ID,
+        "render_profile_id": profile_identity(profile()),
+        "flow": [
+            {
+                "kind": "speech",
+                "number": 1,
+                "segment_id": item.segment_id,
+                "wav": item.wav,
+                "text": item.text,
+                "language": item.language,
+                "role": item.role,
+                "binding": dict(item.binding),
+                "source": [span.to_dict() for span in item.source],
+                "control": [{"start": 0, "end": 1, "name": "emphasis", "unexpected": 1}],
+            }
+        ],
+    }
     with pytest.raises(CodecError, match="unknown field"):
         plan_from_dict(raw_plan)
 
@@ -469,7 +504,9 @@ def test_unknown_binding_fields_remain_opaque() -> None:
     assert value.speech[0].binding == generic
 
 
-def test_toml_serialization_order_is_stable_for_equivalent_opaque_mappings(tmp_path: Path) -> None:
+def test_toml_serialization_order_is_stable_for_equivalent_opaque_mappings(
+    tmp_path: Path,
+) -> None:
     first_binding = {"renderer": "opaque", "target_id": "target", "voice": "v"}
     second_binding = {"voice": "v", "renderer": "opaque", "target_id": "target"}
     first = plan(speech(binding=first_binding))
@@ -531,7 +568,9 @@ def test_checked_in_examples_load_and_join() -> None:
     manifest_value.validate_against(plan_value)
 
 
-def test_cli_inspect_summaries_are_read_only_and_informative(capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_inspect_summaries_are_read_only_and_informative(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     root = Path(__file__).parents[1]
     for filename, expected in (
         ("af_heart.renderprofile.toml", "fallbacks=clause,token"),
