@@ -1,0 +1,35 @@
+format = "renderplan-preflight"
+schema_version = 1
+report_id = "sha256:ad3e22debec50f044669fa4ba95d7f1603c2b98e4a9bf64bb37d8bf27efe9e02"
+render_plan_id = "sha256:8d69a561665e1012aa2598f238986b1977879c34596b66cdd70f0033788698ff"
+source_plan_id = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+render_profile_id = "sha256:300851157740d7ddb92e85268bd49247d3384d41b0429f31fa22ba1e95622587"
+status = "replan"
+
+[producer]
+name = "voicerender"
+version = "0.2.0"
+
+[[checks]]
+segment_number = 1
+segment_id = "sha256:5e9fd60d48f1fe8ee5597e6207d73597e1b340589db2b663c0b6c208f25f1f6a"
+status = "too_long"
+metric = "model_tokens"
+source = "pykokoro.prepare"
+measured = 532
+maximum = 510
+
+[[replan]]
+segment_number = 1
+segment_id = "sha256:5e9fd60d48f1fe8ee5597e6207d73597e1b340589db2b663c0b6c208f25f1f6a"
+current_level = "sentence"
+action = "split"
+reason = "capacity"
+metric = "model_tokens"
+measured = 532
+maximum = 510
+
+[[replan.source]]
+locator = "f000001.s001"
+start = 0
+end = 11

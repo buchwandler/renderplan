@@ -1,0 +1,18 @@
+format = "render-manifest"
+schema_version = 1
+manifest_id = "sha256:86b9957685bf3224e5e91cb313d1eff3a255f3dbfed316cde0aa67aa5c99d6c5"
+render_plan_id = "sha256:8d69a561665e1012aa2598f238986b1977879c34596b66cdd70f0033788698ff"
+complete = true
+
+[producer]
+name = "voicerender"
+version = "0.2.0"
+
+[[speech]]
+segment_number = 1
+segment_id = "sha256:5e9fd60d48f1fe8ee5597e6207d73597e1b340589db2b663c0b6c208f25f1f6a"
+wav = "000001.wav"
+sha256 = "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+frames = 24000
+sample_rate = 24000
+channels = 1

@@ -1,0 +1,46 @@
+format = "renderprofile"
+schema_version = 1
+profile_id = "sha256:300851157740d7ddb92e85268bd49247d3384d41b0429f31fa22ba1e95622587"
+default_role = "narrator"
+
+[producer]
+name = "voicerender"
+version = "0.2.0"
+
+[planning]
+split = "sentence"
+capacity_fallback = ["clause", "token"]
+max_preflight_passes = 3
+
+[pauses]
+mode = "manual"
+clause = "180ms"
+paragraph = "800ms"
+sentence = "500ms"
+
+[roles]
+
+[roles.narrator]
+language = "en-US"
+
+[roles.narrator.binding]
+renderer = "kokoro"
+target_id = "kokoro-v1"
+voice = "af_heart"
+
+[roles.narrator.requirements]
+token_fields = ["span", "pos", "tag", "morph"]
+frontend = "renderer"
+pronunciation = "renderer"
+
+[roles.narrator.capacity]
+
+[roles.narrator.capacity.planner]
+metric = "linguistic_tokens"
+maximum = 180
+guarantee = "advisory"
+
+[roles.narrator.capacity.renderer]
+metric = "model_tokens"
+maximum = 510
+guarantee = "hard"

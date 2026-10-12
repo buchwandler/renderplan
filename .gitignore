@@ -218,3 +218,5 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+renderplan/_version.py
+context_renderplan*.*

@@ -1,0 +1,46 @@
+format = "renderplan"
+schema_version = 1
+plan_id = "sha256:8d69a561665e1012aa2598f238986b1977879c34596b66cdd70f0033788698ff"
+source_plan_id = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+render_profile_id = "sha256:300851157740d7ddb92e85268bd49247d3384d41b0429f31fa22ba1e95622587"
+source_plan_sha256 = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+
+[producer]
+name = "utterplan"
+version = "0.6.0"
+
+[[flow]]
+kind = "speech"
+number = 1
+segment_id = "sha256:5e9fd60d48f1fe8ee5597e6207d73597e1b340589db2b663c0b6c208f25f1f6a"
+wav = "000001.wav"
+text = "I was fine."
+language = "en-US"
+role = "narrator"
+split_reason = "policy"
+planning_level = "sentence"
+semantic_end = "sentence"
+preflight_required = true
+
+[flow.binding]
+renderer = "kokoro"
+target_id = "kokoro-v1"
+voice = "af_heart"
+
+[flow.token]
+span = [[0, 1], [2, 5], [6, 10], [10, 11]]
+pos = ["PRON", "AUX", "ADJ", "PUNCT"]
+tag = ["PRP", "VBD", "JJ", "."]
+morph = [[0, "Case=Nom|Number=Sing"]]
+
+[[flow.source]]
+locator = "f000001.s001"
+start = 0
+end = 11
+
+[[flow]]
+kind = "pause"
+pause_id = "sha256:e5eaa3b9bc44576827f50f200b9d195ea7318c6174898402b58187121d2f2d73"
+duration = "500ms"
+reason = "sentence"
+after_speech = 1
