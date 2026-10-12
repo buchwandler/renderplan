@@ -1,9 +1,9 @@
 format = "renderplan-preflight"
+render_plan_id = "sha256:75e9e5c88522ea82a42584e2bc0704844bc2326e67d9256f7d5609a572fd0bf5"
+render_profile_id = "sha256:3251269dcf3f5dcce255342fc04e5bd634d954c387246022f1b823cd50d5bcc3"
+report_id = "sha256:980bae5c218e412698a9e7e46e91d3f045657e1d0897121300eed9300d2af39d"
 schema_version = 1
-report_id = "sha256:ad3e22debec50f044669fa4ba95d7f1603c2b98e4a9bf64bb37d8bf27efe9e02"
-render_plan_id = "sha256:8d69a561665e1012aa2598f238986b1977879c34596b66cdd70f0033788698ff"
 source_plan_id = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
-render_profile_id = "sha256:300851157740d7ddb92e85268bd49247d3384d41b0429f31fa22ba1e95622587"
 status = "replan"
 
 [producer]
@@ -11,25 +11,25 @@ name = "voicerender"
 version = "0.2.0"
 
 [[checks]]
-segment_number = 1
-segment_id = "sha256:5e9fd60d48f1fe8ee5597e6207d73597e1b340589db2b663c0b6c208f25f1f6a"
-status = "too_long"
-metric = "model_tokens"
-source = "pykokoro.prepare"
-measured = 532
 maximum = 510
+measured = 532
+metric = "model_tokens"
+segment_id = "sha256:f0e0587bd25efeb23df2c1a7d2707f0fcbd7cb700cac669f345ae98cfd9240f2"
+segment_number = 1
+source = "pykokoro.prepare"
+status = "too_long"
 
 [[replan]]
-segment_number = 1
-segment_id = "sha256:5e9fd60d48f1fe8ee5597e6207d73597e1b340589db2b663c0b6c208f25f1f6a"
-current_level = "sentence"
 action = "split"
-reason = "capacity"
-metric = "model_tokens"
-measured = 532
+current_level = "sentence"
 maximum = 510
+measured = 532
+metric = "model_tokens"
+reason = "capacity"
+segment_id = "sha256:f0e0587bd25efeb23df2c1a7d2707f0fcbd7cb700cac669f345ae98cfd9240f2"
+segment_number = 1
 
 [[replan.source]]
-locator = "f000001.s001"
-start = 0
 end = 11
+locator = "f000000.s000"
+start = 0

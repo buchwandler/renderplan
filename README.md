@@ -1,49 +1,75 @@
 # renderplan MVP
 
-`renderplan` is a deliberately small Python contract package shared by **UtterPlan**, **VoiceRender**, and **AudioCompose**. It contains no SSMD compiler, NLP, TTS engine, G2P, waveform, or DSP implementation.
+`renderplan` is a deliberately small Python contract package shared by **UtterPlan**, **VoiceRender**, and **AudioCompose**. It contains no SSMD compiler, NLP, TTS engine, G2P, waveform, DSP, or orchestration implementation.
 
 The intended dependency graph is:
 
 ```text
 utterplan ──────┐
-                │
 voicerender ────┼──> renderplan
-                │
-audiocompose ───┘
+audiocompose ──┘
 ```
 
-The applications do not depend on each other.
+The applications do not depend on each other; the contract package is their only shared dependency.
 
 ## Contracts
 
-The MVP defines four TOML documents.
+The package defines four TOML documents:
 
-1. `renderprofile.toml` — produced/seeded by VoiceRender and then user-owned. It contains opaque renderer bindings, portable requirements, portable/advisory planning limits, the requested split policy, and concrete pause policy.
-2. `renderplan.toml` — produced by UtterPlan. It is an ordered execution flow containing numbered speech requests, exact `NNNNNN.wav` names, pauses, external audio items, token metadata, source provenance, and renderer binding data copied from the profile.
-3. `renderplan-preflight.toml` — produced by VoiceRender before synthesis. It binds to one RenderPlan and is either `status = "ok"`, `status = "replan"`, or `status = "reject"`.
-4. `render-manifest.toml` — produced by VoiceRender during/after synthesis. It binds rendered WAV metadata to exact RenderPlan speech segment IDs.
+1. `renderprofile.toml` — seeded by VoiceRender and user-owned. It contains opaque, self-contained renderer bindings, portable requirements, optional capacity descriptions, split/fallback policy, and explicit pause durations. Shared pause modes are `manual` and `none`; orchestration pass limits do not belong in this contract.
+2. `renderplan.toml` — produced by UtterPlan. Its ordered flow is the exact serial execution contract: numbered speech requests, exact `NNNNNN.wav` names, generic pauses, audio items, controls, tokens, source provenance, and role bindings copied from the profile.
+3. `renderplan-preflight.toml` — produced by VoiceRender for one exact RenderPlan. It has status `ok`, `replan`, or `reject` and refers to speech occurrences by `(segment_number, segment_id)`.
+4. `render-manifest.toml` — produced by VoiceRender. It binds WAV metadata to exact `(segment_number, segment_id)` plan occurrences. A complete manifest contains exactly every plan speech occurrence; an incomplete one may contain only occurrences from that plan.
 
-## Preflight loop
+Consumers can use the shared joins instead of implementing their own parsers:
 
-The important contract is that VoiceRender may **validate and reject** a RenderPlan but may not silently change its segmentation.
-
-```text
-UtterPlan + RenderProfile
-        |
-        v
-RenderPlan pass 1
-        |
-        v
-VoiceRender preflight
-        |
-        +-- OK ----------------------> render exact numbered segments
-        |
-        `-- REPLAN (segment 37) ----> UtterPlan splits that planned segment at
-                                      the next configured fallback boundary
-                                      and writes a new RenderPlan
+```python
+plan.validate_against_profile(profile)
+report.validate_against(plan)
+manifest.validate_against(plan)
 ```
 
-A backend-specific measurement remains useful to humans and VoiceRender:
+These are portable contract checks only; they do not resolve engines, inspect WAV files, or orchestrate a pipeline.
+
+## UtterPlan v7 source and token mapping
+
+The first producer uses zero-based v7 provenance locators such as `f000000.s000`, `f000000.s001`, and `f000001.s000`: six digits for the flow index and three for the segment index. A locator is an opaque provenance address, meaningful only together with `RenderPlan.source_plan_id`; it is not a globally stable segment ID. `renderplan` does not parse or resolve locators and has no UtterPlan dependency.
+
+`SourceSpan.start` and `.end` are Python string/code-point offsets into the prepared `FlowSegment.text`. For every speech request, UtterPlan must prove:
+
+```text
+SpeechItem.text == concatenation, in order, of each referenced FlowSegment.text[start:end]
+```
+
+Do not trim request-edge whitespace. These offsets also map source spans and request-local controls/tokens deterministically. Source-to-text equality is proved by UtterPlan against its source document, not by `renderplan`.
+The destination start offset of source span `N` inside the request is the sum of the lengths of all preceding source slices. This preserves a direct mapping without trimming or a second offset table.
+
+`TokenBundle.span` is a dense, ordered list of request-local `[start, end]` character ranges; `pos` and `tag`, when present, are dense parallel arrays. `lemma` and `morph` are sparse arrays of `[token_index, value]`. VoiceRender derives a token surface from `speech.text[start:end]`. Profile-required token fields must be complete under those semantics; available optional fields should be preserved, but `lemma` and `morph` should not be declared required unless an adapter genuinely requires them.
+
+`SpeechControl` is request-local and renderer-neutral: it carries `start`, `end`, `name`, and TOML-safe `params`. Initial semantic names include `pronunciation`, `prosody`, `emphasis`, `say_as`, and `extension:<name>`. Controls participate in `segment_id`; renderers decide support, and unsupported controls must fail preflight rather than be ignored. Control ranges may overlap only when the source semantics permit it. Engine-specific voice selection is resolved into the opaque logical role/binding; audio directives become `AudioItem`s.
+
+Bindings copied into plans must be self-contained enough to execute without reopening the RenderProfile. This contract does not define renderer-specific path keys or local-asset resolution.
+This schema has no generic asset-reference type yet. A VoiceRender profile producer must refuse bindings that depend on profile-local or otherwise uncopied asset state; do not introduce renderer-specific asset-path keys into this shared contract.
+
+## Identity and replan contract
+
+`segment_id` identifies the exact synthesis request: text, language, role, binding, tokens, and controls. It excludes display number and plan provenance such as source spans, split reason, planning level, and semantic end. Duplicate requests may therefore share a `segment_id`; `(segment_number, segment_id)` identifies each occurrence within a plan, report, or manifest.
+
+`plan_id` identifies the complete ordered execution flow, including speech numbers/order, request IDs, provenance and planning semantics, preflight requirements, every pause, and every audio item. Producer package versions do not change semantic profile or plan identity. Exact source-file bytes are not included in RenderPlan identity.
+
+A PreflightReport describes failures only for its concrete RenderPlan; it cannot preserve successful capacity splits from earlier attempts. The replan join is therefore:
+
+```text
+original UtterPlan + RenderProfile + previous RenderPlan
+                           + PreflightReport for that previous RenderPlan
+                              -> new RenderPlan
+```
+
+UtterPlan uses the previous plan as the partition baseline and rebuilds only failed source ranges. Each replan request must correspond to a `too_long` check and exactly match that speech occurrence's source coverage and current planning level. VoiceRender preflight never edits the plan. `replan` is only for recoverable capacity failures; missing engines, unknown voices, unsupported controls, invalid token fields, and frontend/API failures are `reject` conditions.
+
+A `PauseItem` is a generic serial event positioned by `flow`, with duration, reason, and optional provenance; it can lead a flow or follow speech, audio, or another operation. No preceding speech number is required. The ordered flow is authoritative for AudioCompose.
+
+## Example preflight occurrence
 
 ```toml
 [[checks]]
@@ -58,24 +84,20 @@ source = "pykokoro.prepare"
 [[replan]]
 segment_number = 37
 segment_id = "sha256:..."
-source = ["f000123.s004", "f000123.s005"]
 current_level = "sentence"
 action = "split"
 reason = "capacity"
 metric = "model_tokens"
 measured = 532
 maximum = 510
+
+[[replan.source]]
+locator = "f000123.s004"
+start = 0
+end = 42
 ```
 
-UtterPlan does **not** need to understand `model_tokens`. It uses the stable source locators, `current_level`, and generic `action = "split"`. Its original semantic graph plus the RenderProfile fallback sequence, for example `sentence -> clause -> token`, is sufficient to rebuild the failed request. The preflight document also binds the original `source_plan_id` and `render_profile_id`, so stale feedback can be rejected without importing VoiceRender.
-
-If no safe fallback remains, UtterPlan fails instead of inventing a cut.
-
-## Why this avoids false portability
-
-A renderer such as Kokoro may only know the true request size after its own frontend has produced model tokens. The MVP does not pretend that UtterPlan can duplicate that frontend.
-
-A RenderProfile may still contain portable planner limits such as `linguistic_tokens`, but they are advisory unless the renderer can truthfully mark them `hard`. The authoritative backend check happens in preflight.
+UtterPlan does not need to understand `model_tokens`; the source-plan ID, copied profile ID, exact plan ID, source ranges, and generic split level/action allow stale feedback to be rejected without importing VoiceRender.
 
 ## Install for development
 
@@ -98,20 +120,18 @@ from renderplan import load_plan, load_preflight
 plan = load_plan("chapter.renderplan.toml")
 report = load_preflight("chapter.preflight.toml")
 
-assert report.render_plan_id == plan.plan_id
+report.validate_against(plan)
 if report.status == "replan":
     for request in report.replan:
-        print(request.segment_number, request.action)
+        print(request.segment_number, request.action, request.source)
 ```
 
 ## MVP invariants
 
-- Persisted identities are SHA-256 over canonical semantic payloads.
-- Producer package versions are provenance and do not alter plan/profile identity.
-- Speech numbers are contiguous starting at 1.
-- Speech `N` always maps to `NNNNNN.wav`.
-- A pause explicitly follows the immediately preceding speech number.
-- VoiceRender preflight never changes the plan.
-- VoiceRender render never introduces an unplanned child speech segment.
+- Persisted identities are SHA-256 over canonical semantic payloads; producer versions are provenance, not identity.
+- Speech numbers are contiguous starting at 1; speech `N` maps to `NNNNNN.wav`.
+- Speech-request identity is stable across renumbering; full plan identity changes when flow order or execution semantics change.
+- `RenderPlan.validate_against_profile`, `PreflightReport.validate_against`, and `RenderManifest.validate_against` enforce portable joins and exact occurrence matching.
+- VoiceRender preflight never changes the plan, and rendering never introduces unplanned speech segments.
 - AudioCompose consumes RenderPlan flow and RenderManifest artifacts; it does not reconstruct pauses from UtterPlan.
 - Engine-specific binding tables are opaque to UtterPlan and AudioCompose.

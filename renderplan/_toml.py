@@ -39,12 +39,12 @@ def _emit_mapping(lines: list[str], mapping: Mapping[str, Any], prefix: tuple[st
     tables: list[tuple[str, Mapping[str, Any]]] = []
     arrays: list[tuple[str, list[Mapping[str, Any]]]] = []
 
-    for raw_key, value in mapping.items():
+    for raw_key, value in sorted(mapping.items(), key=lambda entry: str(entry[0])):
         key = str(raw_key)
         if isinstance(value, Mapping):
             tables.append((key, value))
         elif _is_aot(value):
-            arrays.append((key, value))  # type: ignore[arg-type]
+            arrays.append((key, value))
         else:
             scalars.append((key, value))
 

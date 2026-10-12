@@ -1,22 +1,21 @@
-format = "renderprofile"
-schema_version = 1
-profile_id = "sha256:300851157740d7ddb92e85268bd49247d3384d41b0429f31fa22ba1e95622587"
 default_role = "narrator"
+format = "renderprofile"
+profile_id = "sha256:3251269dcf3f5dcce255342fc04e5bd634d954c387246022f1b823cd50d5bcc3"
+schema_version = 1
+
+[pauses]
+clause = "180ms"
+mode = "manual"
+paragraph = "800ms"
+sentence = "500ms"
+
+[planning]
+capacity_fallback = ["clause", "token"]
+split = "sentence"
 
 [producer]
 name = "voicerender"
 version = "0.2.0"
-
-[planning]
-split = "sentence"
-capacity_fallback = ["clause", "token"]
-max_preflight_passes = 3
-
-[pauses]
-mode = "manual"
-clause = "180ms"
-paragraph = "800ms"
-sentence = "500ms"
 
 [roles]
 
@@ -28,19 +27,19 @@ renderer = "kokoro"
 target_id = "kokoro-v1"
 voice = "af_heart"
 
-[roles.narrator.requirements]
-token_fields = ["span", "pos", "tag", "morph"]
-frontend = "renderer"
-pronunciation = "renderer"
-
 [roles.narrator.capacity]
 
 [roles.narrator.capacity.planner]
-metric = "linguistic_tokens"
-maximum = 180
 guarantee = "advisory"
+maximum = 180
+metric = "linguistic_tokens"
 
 [roles.narrator.capacity.renderer]
-metric = "model_tokens"
-maximum = 510
 guarantee = "hard"
+maximum = 510
+metric = "model_tokens"
+
+[roles.narrator.requirements]
+frontend = "renderer"
+pronunciation = "renderer"
+token_fields = ["span", "pos", "tag"]

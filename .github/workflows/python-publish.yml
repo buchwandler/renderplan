@@ -1,0 +1,84 @@
+# Publish the tested RenderPlan release tag, not an unrelated branch head.
+name: Upload Python Package
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/tests.yml
+
+  static:
+    uses: ./.github/workflows/pre-commit.yml
+
+  deploy:
+    needs: [test, static]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install build tooling
+        run: python -m pip install build twine packaging
+      - name: Build package
+        run: python -m build
+      - name: Check built distributions
+        run: python -m twine check dist/*
+      - name: Validate release artifacts
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python - <<'PY'
+          import os
+          from email import policy
+          from email.parser import Parser
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          from packaging.requirements import Requirement
+          from packaging.utils import parse_sdist_filename, parse_wheel_filename
+          from packaging.version import Version
+
+          tag_version = Version(os.environ["RELEASE_TAG"].removeprefix("v"))
+          artifacts = list(Path("dist").iterdir())
+          wheels = [path for path in artifacts if path.suffix == ".whl"]
+          sdists = [path for path in artifacts if path.name.endswith(".tar.gz")]
+          assert len(wheels) == len(sdists) == 1, artifacts
+          wheel_name, wheel_version, _, _ = parse_wheel_filename(wheels[0].name)
+          sdist_name, sdist_version = parse_sdist_filename(sdists[0].name)
+          assert wheel_name == sdist_name == "renderplan"
+          assert wheel_version == sdist_version == tag_version
+
+          with ZipFile(wheels[0]) as archive:
+              names = set(archive.namelist())
+              assert {"renderplan/py.typed", "renderplan/cli.py"} <= names
+              metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
+              metadata = Parser(policy=policy.default).parsestr(
+                  archive.read(metadata_name).decode("utf-8")
+              )
+              assert metadata["Name"] == "renderplan"
+              assert Version(metadata["Version"]) == tag_version
+              requirements = [Requirement(value) for value in metadata.get_all("Requires-Dist", [])]
+              assert any(
+                  requirement.name == "tomli"
+                  and ">=2.0" in str(requirement.specifier)
+                  and requirement.marker is not None
+                  and requirement.marker.evaluate({"python_version": "3.10"})
+                  and not requirement.marker.evaluate({"python_version": "3.13"})
+                  for requirement in requirements
+              ), requirements
+          PY
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.14.1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          attestations: false

@@ -1,0 +1,120 @@
+name: Run tests
+
+on:
+  push:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m compileall -q renderplan tests
+      - name: Run tests
+        run: python -m pytest -q
+
+  lower-bounds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install minimum runtime dependency and test runner
+        run: |
+          python -m pip install "tomli==2.0.0" "pytest==8.0.0"
+          python -m pip install --no-deps -e .
+      - name: Run lower-bound tests
+        run: python -m pytest -q
+
+  package-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build wheel and sdist
+        run: |
+          python -m pip install build
+          python -m build --outdir "$RUNNER_TEMP/dist"
+      - name: Verify wheel and sdist
+        run: |
+          python - <<'PY'
+          import os
+          import tarfile
+          from email import policy
+          from email.parser import Parser
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          from packaging.requirements import Requirement
+          from packaging.utils import parse_sdist_filename, parse_wheel_filename
+
+          artifacts = Path(os.environ["RUNNER_TEMP"]) / "dist"
+          wheels = list(artifacts.glob("*.whl"))
+          sdists = list(artifacts.glob("*.tar.gz"))
+          assert len(wheels) == len(sdists) == 1, (wheels, sdists)
+          wheel, sdist = wheels[0], sdists[0]
+          wheel_name, wheel_version, _, _ = parse_wheel_filename(wheel.name)
+          sdist_name, sdist_version = parse_sdist_filename(sdist.name)
+          assert wheel_name == sdist_name == "renderplan"
+          assert wheel_version == sdist_version
+
+          with ZipFile(wheel) as archive:
+              names = set(archive.namelist())
+              assert {"renderplan/py.typed", "renderplan/cli.py", "renderplan/codec.py"} <= names
+              metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
+              metadata = Parser(policy=policy.default).parsestr(
+                  archive.read(metadata_name).decode("utf-8")
+              )
+              assert metadata["Name"] == "renderplan"
+              assert metadata["Version"] == str(wheel_version)
+              requirements = [Requirement(value) for value in metadata.get_all("Requires-Dist", [])]
+              assert any(
+                  requirement.name == "tomli"
+                  and ">=2.0" in str(requirement.specifier)
+                  and requirement.marker is not None
+                  and requirement.marker.evaluate({"python_version": "3.10"})
+                  and not requirement.marker.evaluate({"python_version": "3.12"})
+                  for requirement in requirements
+              ), requirements
+              entry_points = next(name for name in names if name.endswith(".dist-info/entry_points.txt"))
+              assert b"renderplan = renderplan.cli:main" in archive.read(entry_points)
+
+          with tarfile.open(sdist, "r:gz") as archive:
+              names = archive.getnames()
+              for resource in ("pyproject.toml", "README.md", "renderplan/py.typed", "renderplan/cli.py"):
+                  assert any(name.endswith("/" + resource) for name in names), resource
+          PY
+      - name: Install wheel in clean environment
+        run: |
+          python -m venv "$RUNNER_TEMP/renderplan-wheel-venv"
+          "$RUNNER_TEMP/renderplan-wheel-venv/bin/python" -m pip install \
+            "$RUNNER_TEMP"/dist/renderplan-*.whl
+      - name: Run installed CLI smoke checks
+        run: |
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/renderplan-wheel-venv/bin/python" -c \
+            "import importlib.metadata as m; import renderplan; assert m.version('renderplan') == renderplan.__version__"
+          "$RUNNER_TEMP/renderplan-wheel-venv/bin/renderplan" --version
+          for file in "$GITHUB_WORKSPACE"/examples/*.toml; do
+            "$RUNNER_TEMP/renderplan-wheel-venv/bin/renderplan" validate "$file"
+            "$RUNNER_TEMP/renderplan-wheel-venv/bin/renderplan" inspect "$file"
+          done

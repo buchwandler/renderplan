@@ -1,21 +1,21 @@
 format = "renderplan-preflight"
-schema_version = 1
-report_id = "sha256:8ee915095c39218e49a5b88fd5e4b59c9ebb278ab8130b21dd6f33fd1f6ccd7f"
-render_plan_id = "sha256:8d69a561665e1012aa2598f238986b1977879c34596b66cdd70f0033788698ff"
-source_plan_id = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
-render_profile_id = "sha256:300851157740d7ddb92e85268bd49247d3384d41b0429f31fa22ba1e95622587"
-status = "ok"
+render_plan_id = "sha256:75e9e5c88522ea82a42584e2bc0704844bc2326e67d9256f7d5609a572fd0bf5"
+render_profile_id = "sha256:3251269dcf3f5dcce255342fc04e5bd634d954c387246022f1b823cd50d5bcc3"
 replan = []
+report_id = "sha256:42495f2c375c922d8d2d80b3dc1cc8c1a2557fc43bf30298e0740b235a8da7d4"
+schema_version = 1
+source_plan_id = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+status = "ok"
 
 [producer]
 name = "voicerender"
 version = "0.2.0"
 
 [[checks]]
-segment_number = 1
-segment_id = "sha256:5e9fd60d48f1fe8ee5597e6207d73597e1b340589db2b663c0b6c208f25f1f6a"
-status = "ok"
-metric = "model_tokens"
-source = "pykokoro.prepare"
-measured = 4
 maximum = 510
+measured = 4
+metric = "model_tokens"
+segment_id = "sha256:f0e0587bd25efeb23df2c1a7d2707f0fcbd7cb700cac669f345ae98cfd9240f2"
+segment_number = 1
+source = "pykokoro.prepare"
+status = "ok"

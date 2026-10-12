@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -54,17 +55,19 @@ def require_nonempty(value: str, field: str) -> str:
 
 def require_toml_value(value: Any, field: str = "value") -> Any:
     """Validate the small JSON/TOML-safe subset used for opaque binding/options data."""
-    if isinstance(value, bool) or isinstance(value, str):
+    if isinstance(value, (bool, str)):
         return value
     if isinstance(value, int):
         return value
     if isinstance(value, float):
-        if value != value or value in (float("inf"), float("-inf")):
+        if not math.isfinite(value):
             raise ValidationError(f"{field} must not contain NaN or infinity")
         return value
     if isinstance(value, Mapping):
         for key, item in value.items():
-            require_nonempty(str(key), f"{field} key")
+            if not isinstance(key, str):
+                raise ValidationError(f"{field} keys must be strings")
+            require_nonempty(key, f"{field} key")
             require_toml_value(item, f"{field}.{key}")
         return value
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):

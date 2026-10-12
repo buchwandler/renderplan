@@ -1,26 +1,25 @@
 format = "renderplan"
+plan_id = "sha256:75e9e5c88522ea82a42584e2bc0704844bc2326e67d9256f7d5609a572fd0bf5"
+render_profile_id = "sha256:3251269dcf3f5dcce255342fc04e5bd634d954c387246022f1b823cd50d5bcc3"
 schema_version = 1
-plan_id = "sha256:8d69a561665e1012aa2598f238986b1977879c34596b66cdd70f0033788698ff"
 source_plan_id = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
-render_profile_id = "sha256:300851157740d7ddb92e85268bd49247d3384d41b0429f31fa22ba1e95622587"
-source_plan_sha256 = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
 
 [producer]
 name = "utterplan"
-version = "0.6.0"
+version = "7.0.0"
 
 [[flow]]
 kind = "speech"
-number = 1
-segment_id = "sha256:5e9fd60d48f1fe8ee5597e6207d73597e1b340589db2b663c0b6c208f25f1f6a"
-wav = "000001.wav"
-text = "I was fine."
 language = "en-US"
-role = "narrator"
-split_reason = "policy"
+number = 1
 planning_level = "sentence"
-semantic_end = "sentence"
 preflight_required = true
+role = "narrator"
+segment_id = "sha256:f0e0587bd25efeb23df2c1a7d2707f0fcbd7cb700cac669f345ae98cfd9240f2"
+semantic_end = "sentence"
+split_reason = "policy"
+text = "I was fine."
+wav = "000001.wav"
 
 [flow.binding]
 renderer = "kokoro"
@@ -28,19 +27,41 @@ target_id = "kokoro-v1"
 voice = "af_heart"
 
 [flow.token]
-span = [[0, 1], [2, 5], [6, 10], [10, 11]]
-pos = ["PRON", "AUX", "ADJ", "PUNCT"]
-tag = ["PRP", "VBD", "JJ", "."]
 morph = [[0, "Case=Nom|Number=Sing"]]
+pos = ["PRON", "AUX", "ADJ", "PUNCT"]
+span = [[0, 1], [2, 5], [6, 10], [10, 11]]
+tag = ["PRP", "VBD", "JJ", "."]
+
+[[flow.control]]
+end = 10
+name = "emphasis"
+start = 6
+
+[flow.control.params]
+level = "moderate"
 
 [[flow.source]]
-locator = "f000001.s001"
-start = 0
 end = 11
+locator = "f000000.s000"
+start = 0
 
 [[flow]]
-kind = "pause"
-pause_id = "sha256:e5eaa3b9bc44576827f50f200b9d195ea7318c6174898402b58187121d2f2d73"
 duration = "500ms"
+kind = "pause"
+pause_id = "sha256:b0c9121f863f5037470edaee6f8bc3b5c6fddc8f9db1a655282d11bf53cbc22f"
 reason = "sentence"
-after_speech = 1
+
+[[flow.source]]
+end = 11
+locator = "f000000.s000"
+start = 0
+
+[[flow]]
+audio_id = "sha256:ab174f36274abcc207311f6ee90411ab93a045f09327464217c78ccaf42bddf8"
+kind = "audio"
+src = "media/chime.wav"
+
+[[flow.source]]
+end = 1
+locator = "f000001.s000"
+start = 0
