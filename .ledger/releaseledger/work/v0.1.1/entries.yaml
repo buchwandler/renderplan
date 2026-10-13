@@ -1,0 +1,51 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: v0.1.1
+git_base_ref: 7cf5173590ef1ce442af4df731cfc855f7994cfa
+git_base_sha: 7cf5173590ef1ce442af4df731cfc855f7994cfa
+git_head_ref: f27def940be867ac2704d157d72b9b1e2fc1bbf8
+git_head_sha: f27def940be867ac2704d157d72b9b1e2fc1bbf8
+include_merges: nontrivial
+entries:
+  - kind: added
+    summary: "Added the RenderPlan-set contract for ordered chapters and profile identity"
+    status: accepted
+    source_refs:
+      - git:0e39bcd730b0fa742a4217de0cc9f6529283a703
+    paths:
+      - README.md
+      - renderplan/__init__.py
+      - renderplan/set.py
+      - tests/test_renderplan_set.py
+    sources:
+      - git:0e39bcd730b0fa742a4217de0cc9f6529283a703
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"
+  - kind: changed
+    summary: "Changed contracts with dispatch, handoff and path validation, malformed-input checks, and a public registry"
+    status: accepted
+    source_refs:
+      - git:f27def940be867ac2704d157d72b9b1e2fc1bbf8
+    paths:
+      - README.md
+      - pyproject.toml
+      - renderplan/__init__.py
+      - renderplan/codec.py
+      - renderplan/collection.py
+      - renderplan/contracts.py
+      - renderplan/paths.py
+      - renderplan/set.py
+      - renderplan/validation.py
+      - tests/test_collection.py
+      - tests/test_contracts.py
+      - tests/test_renderplan_set.py
+    sources:
+      - git:f27def940be867ac2704d157d72b9b1e2fc1bbf8
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"

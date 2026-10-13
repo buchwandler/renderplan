@@ -1,0 +1,37 @@
+rows:
+  - sha: 0e39bcd730b0fa742a4217de0cc9f6529283a703
+    inspected: true
+    inspected_paths:
+      - README.md
+      - renderplan/__init__.py
+      - renderplan/set.py
+      - tests/test_renderplan_set.py
+    observed_behavior: "Introduced the initial public RenderPlanSet and RenderPlanSetChapter API with strict collection serialization, chapter identity checks, and profile snapshot validation for book-oriented metadata."
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false
+  - sha: f27def940be867ac2704d157d72b9b1e2fc1bbf8
+    inspected: true
+    inspected_paths:
+      - README.md
+      - pyproject.toml
+      - renderplan/__init__.py
+      - renderplan/codec.py
+      - renderplan/collection.py
+      - renderplan/contracts.py
+      - renderplan/paths.py
+      - renderplan/set.py
+      - renderplan/validation.py
+      - tests/test_collection.py
+      - tests/test_contracts.py
+      - tests/test_renderplan_set.py
+    observed_behavior: "Refined the collection contract around the renderplan-set format, added shared contract and path-validation APIs plus load_any dispatch and handoff checks, and strengthened malformed-input handling with expanded tests and documentation."
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false

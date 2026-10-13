@@ -1,0 +1,51 @@
+{
+  "candidate_count": 2,
+  "candidates": [
+    {
+      "additions": 546,
+      "deletions": 0,
+      "patch_file": "0e39bcd.patch",
+      "patch_sha256": "a7378ca5c9641f8bad1d16ddfc49c814bb06851667bab7b3137ce632feb5ccb6",
+      "paths": [
+        "README.md",
+        "renderplan/__init__.py",
+        "renderplan/set.py",
+        "tests/test_renderplan_set.py"
+      ],
+      "sha": "0e39bcd730b0fa742a4217de0cc9f6529283a703",
+      "short_sha": "0e39bcd",
+      "source_ref": "git:0e39bcd730b0fa742a4217de0cc9f6529283a703"
+    },
+    {
+      "additions": 1164,
+      "deletions": 373,
+      "patch_file": "f27def9.patch",
+      "patch_sha256": "cac0ea626ab6961299bfaa5e324b62d207b463503f5faa7d95e52144a1e351f3",
+      "paths": [
+        "README.md",
+        "pyproject.toml",
+        "renderplan/__init__.py",
+        "renderplan/codec.py",
+        "renderplan/collection.py",
+        "renderplan/contracts.py",
+        "renderplan/paths.py",
+        "renderplan/set.py",
+        "renderplan/validation.py",
+        "tests/test_collection.py",
+        "tests/test_contracts.py",
+        "tests/test_renderplan_set.py"
+      ],
+      "sha": "f27def940be867ac2704d157d72b9b1e2fc1bbf8",
+      "short_sha": "f27def9",
+      "source_ref": "git:f27def940be867ac2704d157d72b9b1e2fc1bbf8"
+    }
+  ],
+  "git_base_ref": "7cf5173590ef1ce442af4df731cfc855f7994cfa",
+  "git_base_sha": "7cf5173590ef1ce442af4df731cfc855f7994cfa",
+  "git_head_ref": "f27def940be867ac2704d157d72b9b1e2fc1bbf8",
+  "git_head_sha": "f27def940be867ac2704d157d72b9b1e2fc1bbf8",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "v0.1.1",
+  "schema_version": 1
+}

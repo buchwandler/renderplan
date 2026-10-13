@@ -1,0 +1,85 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: v0.1.1
+git_base_ref: v0.1.0
+git_base_sha: 7cf5173590ef1ce442af4df731cfc855f7994cfa
+git_head_ref: HEAD
+git_head_sha: f27def940be867ac2704d157d72b9b1e2fc1bbf8
+git_range: 7cf5173590ef1ce442af4df731cfc855f7994cfa..f27def940be867ac2704d157d72b9b1e2fc1bbf8
+commit_count: 2
+rows:
+  - sha: 0e39bcd730b0fa742a4217de0cc9f6529283a703
+    source_ref: git:0e39bcd730b0fa742a4217de0cc9f6529283a703
+    short_sha: 0e39bcd
+    changed_paths:
+      - README.md
+      - renderplan/__init__.py
+      - renderplan/set.py
+      - tests/test_renderplan_set.py
+    stats:
+      files_changed: 4
+      insertions: 546
+      deletions: 0
+    inspected: true
+    inspected_paths:
+      - README.md
+      - renderplan/__init__.py
+      - renderplan/set.py
+      - tests/test_renderplan_set.py
+    observed_behavior:
+      Introduced the initial public RenderPlanSet and RenderPlanSetChapter
+      API with strict collection serialization, chapter identity checks, and profile
+      snapshot validation for book-oriented metadata.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: add book collection"
+    target_entry_id: entry-0001
+    notes: ""
+  - sha: f27def940be867ac2704d157d72b9b1e2fc1bbf8
+    source_ref: git:f27def940be867ac2704d157d72b9b1e2fc1bbf8
+    short_sha: f27def9
+    changed_paths:
+      - README.md
+      - pyproject.toml
+      - renderplan/__init__.py
+      - renderplan/codec.py
+      - renderplan/collection.py
+      - renderplan/contracts.py
+      - renderplan/paths.py
+      - renderplan/set.py
+      - renderplan/validation.py
+      - tests/test_collection.py
+      - tests/test_contracts.py
+      - tests/test_renderplan_set.py
+    stats:
+      files_changed: 12
+      insertions: 1164
+      deletions: 373
+    inspected: true
+    inspected_paths:
+      - README.md
+      - pyproject.toml
+      - renderplan/__init__.py
+      - renderplan/codec.py
+      - renderplan/collection.py
+      - renderplan/contracts.py
+      - renderplan/paths.py
+      - renderplan/set.py
+      - renderplan/validation.py
+      - tests/test_collection.py
+      - tests/test_contracts.py
+      - tests/test_renderplan_set.py
+    observed_behavior:
+      Refined the collection contract around the renderplan-set format,
+      added shared contract and path-validation APIs plus load_any dispatch and handoff
+      checks, and strengthened malformed-input handling with expanded tests and documentation.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: add support for books"
+    target_entry_id: entry-0002
+    notes: ""

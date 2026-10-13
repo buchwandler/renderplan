@@ -1,0 +1,1785 @@
+ README.md                            |  33 ++--
+ pyproject.toml                       |   2 +-
+ renderplan/__init__.py               |  71 ++++---
+ renderplan/codec.py                  |  15 +-
+ renderplan/{set.py => collection.py} | 259 ++++++++++++++++----------
+ renderplan/contracts.py              |  33 ++++
+ renderplan/paths.py                  |  72 ++++++++
+ renderplan/set.py                    | 339 ++--------------------------------
+ renderplan/validation.py             |  56 ++++++
+ tests/test_collection.py             | 348 +++++++++++++++++++++++++++++++++++
+ tests/test_contracts.py              | 162 ++++++++++++++++
+ tests/test_renderplan_set.py         |  13 +-
+ 12 files changed, 928 insertions(+), 475 deletions(-)
+
+diff --git a/README.md b/README.md
+index 617dc67..ba84cfb 100644
+--- a/README.md
++++ b/README.md
+@@ -12,32 +12,29 @@ audiocompose ──┘
+
+ The applications do not depend on each other; the contract package is their only shared dependency.
+
++## RenderPlan-set collection contract
+
++RenderPlan owns the immutable `renderplan-set` v1 collection/index contract shared by the
++speech pipeline. UtterPlan's `render-book` operation produces the index alongside its
++per-chapter RenderPlans; UtterPlan continues to own book-workspace discovery,
++segmentation, and its invocation report. The set contract records chapter ordering,
++profile identity, and normalized artifact references without performing orchestration.
+
+-## Book collection orchestration
+-
+-[UtterPlan](https://pypi.org/project/utterplan/) now offers `render-book` as a
+-book-workspace convenience over its existing per-plan projection. It writes one
+-ordinary RenderPlan artifact per selected chapter under a directory keyed by the
+-RenderProfile identity. Its `renderplan-set.toml` collection index and
+-`render-report.toml` invocation report are UtterPlan-owned operational metadata,
+-not RenderPlan schemas and not inputs to this package's codecs.
+-
+-Every `.renderplan.toml` file in such a collection obeys the existing shared
+-RenderPlan contract and is consumed independently by
+-[VoiceRender](https://pypi.org/project/voicerender/) for preflight and rendering.
+-RenderPlan does not discover SSMDBook workspaces, batch chapter files, import
+-UtterPlan or VoiceRender, or add collection/runtime APIs. The package boundary and
+-contracts below remain unchanged.
++RenderPlan provides `RenderPlanSet` and `RenderPlanSetChapter`, strict TOML codecs,
++profile snapshot identity validation, and `load_any()` dispatch for `renderplan-set`.
++Filesystem containment and symlink checks remain the consumers' responsibility.
++RenderPlan does not discover SSMDBook workspaces, batch chapter files, import UtterPlan
++or VoiceRender, or add execution/runtime orchestration.
+
+ ## Contracts
+
+-The package defines four TOML documents:
++The package defines five TOML contract documents:
+
+ 1. `renderprofile.toml` — seeded by VoiceRender and user-owned. It contains opaque, self-contained renderer bindings, portable requirements, optional capacity descriptions, split/fallback policy, and explicit pause durations. Shared pause modes are `manual` and `none`; orchestration pass limits do not belong in this contract.
+ 2. `renderplan.toml` — produced by UtterPlan. Its ordered flow is the exact serial execution contract: numbered speech requests, exact `NNNNNN.wav` names, generic pauses, audio items, controls, tokens, source provenance, and role bindings copied from the profile.
+ 3. `renderplan-preflight.toml` — produced by VoiceRender for one exact RenderPlan. It has status `ok`, `replan`, or `reject` and refers to speech occurrences by `(segment_number, segment_id)`.
+ 4. `render-manifest.toml` — produced by VoiceRender. It binds WAV metadata to exact `(segment_number, segment_id)` plan occurrences. A complete manifest contains exactly every plan speech occurrence; an incomplete one may contain only occurrences from that plan.
++5. `renderplan-set.toml` — produced by UtterPlan in `render-book` workflows and defined by RenderPlan. It records a safe variant, profile identity/snapshot references, upstream workspace references, and ordered chapter references with source-plan and RenderPlan identities.
+
+ Consumers can use the shared joins instead of implementing their own parsers:
+
+@@ -45,6 +42,10 @@ Consumers can use the shared joins instead of implementing their own parsers:
+ plan.validate_against_profile(profile)
+ report.validate_against(plan)
+ manifest.validate_against(plan)
++validate_plan_profile(plan, profile)
++validate_preflight_handoff(plan, report, require_ok=True)
++validate_manifest_handoff(plan, manifest, require_complete=True)
++validate_set_chapter_plan(renderplan_set, chapter, plan)
+ ```
+
+ These are portable contract checks only; they do not resolve engines, inspect WAV files, or orchestrate a pipeline.
+diff --git a/pyproject.toml b/pyproject.toml
+index 28e8ea7..6db2015 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
+
+ [project]
+ name = "renderplan"
+-description = "Engine-neutral render profile, render plan, preflight, and render manifest contracts for speech pipelines."
++description = "Engine-neutral render profile, plan, preflight, manifest, and collection contracts for speech pipelines."
+ readme = "README.md"
+ requires-python = ">=3.10"
+ dynamic = ["version"]
+diff --git a/renderplan/__init__.py b/renderplan/__init__.py
+index 024f03c..bfc7f94 100644
+--- a/renderplan/__init__.py
++++ b/renderplan/__init__.py
+@@ -9,6 +9,21 @@ from .codec import (
+     save_preflight,
+     save_profile,
+ )
++from .collection import (
++    RENDERPLAN_SET_FORMAT,
++    RENDERPLAN_SET_VERSION,
++    RenderPlanSet,
++    RenderPlanSetChapter,
++    RenderPlanSetError,
++    load_renderplan_set,
++    renderplan_set_from_dict,
++    renderplan_set_to_dict,
++    renderplan_set_to_toml,
++    save_renderplan_set,
++    validate_renderplan_set,
++    validate_renderplan_set_profile,
++)
++from .contracts import CONTRACTS, supported_contracts
+ from .errors import CodecError, RenderPlanError, ValidationError
+ from .model import (
+     MANIFEST_FORMAT,
+@@ -35,39 +50,27 @@ from .model import (
+     SpeechItem,
+     TokenBundle,
+ )
+-from .set import (
+-    RENDERPLAN_SET_FORMAT,
+-    RENDERPLAN_SET_VERSION,
+-    RenderPlanSet,
+-    RenderPlanSetChapter,
+-    RenderPlanSetError,
+-    load_renderplan_set,
+-    renderplan_set_from_dict,
+-    renderplan_set_to_dict,
+-    renderplan_set_to_toml,
+-    save_renderplan_set,
+-    validate_renderplan_set,
+-    validate_renderplan_set_profile,
++from .paths import (
++    validate_contained_relative_path,
++    validate_posix_relative_reference,
++    validate_safe_basename,
++)
++from .validation import (
++    validate_manifest_handoff,
++    validate_plan_profile,
++    validate_preflight_handoff,
++    validate_set_chapter_plan,
+ )
+ from .version import __version__
+
+ __all__ = [
+-    "RENDERPLAN_SET_FORMAT",
+-    "RENDERPLAN_SET_VERSION",
+-    "RenderPlanSet",
+-    "RenderPlanSetChapter",
+-    "RenderPlanSetError",
+-    "load_renderplan_set",
+-    "renderplan_set_from_dict",
+-    "renderplan_set_to_dict",
+-    "renderplan_set_to_toml",
+-    "save_renderplan_set",
+-    "validate_renderplan_set",
+-    "validate_renderplan_set_profile",
++    "CONTRACTS",
+     "MANIFEST_FORMAT",
+     "PLAN_FORMAT",
+     "PREFLIGHT_FORMAT",
+     "PROFILE_FORMAT",
++    "RENDERPLAN_SET_FORMAT",
++    "RENDERPLAN_SET_VERSION",
+     "AudioItem",
+     "CapacityConstraint",
+     "CodecError",
+@@ -80,6 +83,9 @@ __all__ = [
+     "RenderManifest",
+     "RenderPlan",
+     "RenderPlanError",
++    "RenderPlanSet",
++    "RenderPlanSetChapter",
++    "RenderPlanSetError",
+     "RenderProfile",
+     "ReplanRequest",
+     "RoleProfile",
+@@ -96,8 +102,23 @@ __all__ = [
+     "load_plan",
+     "load_preflight",
+     "load_profile",
++    "load_renderplan_set",
++    "renderplan_set_from_dict",
++    "renderplan_set_to_dict",
++    "renderplan_set_to_toml",
+     "save_manifest",
+     "save_plan",
+     "save_preflight",
+     "save_profile",
++    "save_renderplan_set",
++    "supported_contracts",
++    "validate_contained_relative_path",
++    "validate_manifest_handoff",
++    "validate_plan_profile",
++    "validate_posix_relative_reference",
++    "validate_preflight_handoff",
++    "validate_renderplan_set",
++    "validate_renderplan_set_profile",
++    "validate_safe_basename",
++    "validate_set_chapter_plan",
+ ]
+diff --git a/renderplan/codec.py b/renderplan/codec.py
+index 45ca4e1..060982a 100644
+--- a/renderplan/codec.py
++++ b/renderplan/codec.py
+@@ -3,7 +3,7 @@ from __future__ import annotations
+ import importlib
+ from collections.abc import Mapping
+ from pathlib import Path
+-from typing import Any, cast
++from typing import TYPE_CHECKING, Any, cast
+
+ try:
+     tomllib: Any = importlib.import_module("tomllib")
+@@ -38,6 +38,9 @@ from .model import (
+     TokenBundle,
+ )
+
++if TYPE_CHECKING:
++    from .collection import RenderPlanSet
++
+
+ def _mapping(value: Any, field: str) -> Mapping[str, Any]:
+     if not isinstance(value, Mapping):
+@@ -625,7 +628,7 @@ def _read(path: str | Path) -> Mapping[str, Any]:
+     try:
+         with location.open("rb") as stream:
+             return _mapping(tomllib.load(stream), "document")
+-    except (OSError, tomllib.TOMLDecodeError) as exc:
++    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+         raise CodecError(f"cannot read {location}: {exc}") from exc
+
+
+@@ -674,8 +677,12 @@ def save_manifest(manifest: RenderManifest, path: str | Path) -> Path:
+     return _write(path, manifest_to_dict(manifest.with_identity()))
+
+
+-def load_any(path: str | Path) -> RenderProfile | RenderPlan | PreflightReport | RenderManifest:
++def load_any(
++    path: str | Path,
++) -> RenderProfile | RenderPlan | PreflightReport | RenderManifest | RenderPlanSet:
+     raw = _read(path)
++    from .collection import RENDERPLAN_SET_FORMAT, renderplan_set_from_dict
++
+     format_name = raw.get("format")
+     if format_name == PROFILE_FORMAT:
+         return profile_from_dict(raw)
+@@ -685,4 +692,6 @@ def load_any(path: str | Path) -> RenderProfile | RenderPlan | PreflightReport |
+         return preflight_from_dict(raw)
+     if format_name == MANIFEST_FORMAT:
+         return manifest_from_dict(raw)
++    if format_name == RENDERPLAN_SET_FORMAT:
++        return renderplan_set_from_dict(raw)
+     raise CodecError(f"unknown renderplan document format: {format_name!r}")
+diff --git a/renderplan/set.py b/renderplan/collection.py
+similarity index 53%
+copy from renderplan/set.py
+copy to renderplan/collection.py
+index c3eef35..5c0c795 100644
+--- a/renderplan/set.py
++++ b/renderplan/collection.py
+@@ -1,31 +1,26 @@
+-"""Portable RenderPlan-set v1 index contract.
+-
+-The set is workspace metadata produced by UtterPlan and consumed by downstream
+-RenderPlan tools. Its existing on-disk format name is retained for compatibility.
+-"""
++"""Portable RenderPlan-set v1 collection contract."""
+
+ from __future__ import annotations
+
+-import importlib
+ import os
+ import re
+ import tempfile
+ from collections.abc import Mapping
+ from dataclasses import dataclass
+-from pathlib import Path, PurePosixPath, PureWindowsPath
++from pathlib import Path
+ from typing import Any, cast
+
+ from . import codec as renderplan_codec
+ from ._toml import dumps as toml_dumps
+-from .errors import RenderPlanError
++from .errors import CodecError, RenderPlanError, ValidationError
+ from .model import RenderProfile
++from .paths import (
++    validate_contained_relative_path,
++    validate_posix_relative_reference,
++    validate_safe_basename,
++)
+
+-try:
+-    tomllib: Any = importlib.import_module("tomllib")
+-except ModuleNotFoundError:  # pragma: no cover - Python 3.10
+-    tomllib = importlib.import_module("tomli")
+-
+-RENDERPLAN_SET_FORMAT = "utterplan-renderplan-set"
++RENDERPLAN_SET_FORMAT = "renderplan-set"
+ RENDERPLAN_SET_VERSION = 1
+ _PROFILE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+ _FINGERPRINT_RE = re.compile(r"^[0-9a-f]{12}$")
+@@ -41,7 +36,7 @@ class RenderPlanSetError(RenderPlanError):
+
+ @dataclass(frozen=True, slots=True)
+ class RenderPlanSetChapter:
+-    """One successfully written chapter projection in a RenderPlan set."""
++    """One chapter's immutable references and identities in a RenderPlan set."""
+
+     id: str
+     source_number: int
+@@ -65,6 +60,8 @@ class RenderPlanSet:
+     snapshot: str
+     source_profile: str
+     chapters: tuple[RenderPlanSetChapter, ...] = ()
++    format: str = RENDERPLAN_SET_FORMAT
++    version: int = RENDERPLAN_SET_VERSION
+
+     def __post_init__(self) -> None:
+         validate_renderplan_set(self)
+@@ -72,16 +69,34 @@ class RenderPlanSet:
+
+ def validate_renderplan_set(value: RenderPlanSet) -> None:
+     """Reject malformed set values before they are read from or written to disk."""
+-    for field in ("variant", "producer_version", "manifest", "utterplan_dir", "snapshot", "source_profile"):
++    if value.format != RENDERPLAN_SET_FORMAT:
++        raise RenderPlanSetError(f"format must be {RENDERPLAN_SET_FORMAT!r}")
++    if type(value.version) is not int or value.version != RENDERPLAN_SET_VERSION:
++        raise RenderPlanSetError(f"version must be {RENDERPLAN_SET_VERSION}")
++
++    _validate_safe_basename(value.variant, "variant")
++    for field in ("producer_version", "manifest", "utterplan_dir", "source_profile"):
+         _require_nonempty(getattr(value, field), field)
++    for field in ("manifest", "utterplan_dir", "source_profile"):
++        _validate_posix_reference(getattr(value, field), field, allow_parent=True)
++
+     if value.snapshot != "renderprofile.toml":
+-        raise RenderPlanSetError("profile.snapshot must be the canonical 'renderprofile.toml' file")
+-    if not _PROFILE_ID_RE.fullmatch(value.profile_id):
+-        raise RenderPlanSetError("profile.profile_id must be a full sha256 identity")
+-    if not _FINGERPRINT_RE.fullmatch(value.profile_fingerprint):
+-        raise RenderPlanSetError("profile_fingerprint must be 12 lowercase hexadecimal characters")
++        raise RenderPlanSetError(
++            "profile.snapshot must be the canonical 'renderprofile.toml' file",
++            code="index.invalid",
++        )
++    if not isinstance(value.profile_id, str) or not _PROFILE_ID_RE.fullmatch(value.profile_id):
++        raise RenderPlanSetError("profile.id must be a full sha256 identity")
++    if not isinstance(value.profile_fingerprint, str) or not _FINGERPRINT_RE.fullmatch(
++        value.profile_fingerprint
++    ):
++        raise RenderPlanSetError(
++            "profile_fingerprint must be 12 lowercase hexadecimal characters"
++        )
+     if value.profile_fingerprint != value.profile_id.removeprefix("sha256:")[:12]:
+-        raise RenderPlanSetError("profile_fingerprint does not match profile.profile_id")
++        raise RenderPlanSetError(
++            "profile_fingerprint does not match profile.id", code="profile.identity_mismatch"
++        )
+     if not isinstance(value.chapters, tuple):
+         raise RenderPlanSetError("chapter entries must be a tuple")
+
+@@ -92,51 +107,51 @@ def validate_renderplan_set(value: RenderPlanSet) -> None:
+         label = f"chapter[{index}]"
+         if not isinstance(chapter, RenderPlanSetChapter):
+             raise RenderPlanSetError(f"{label} must be a RenderPlanSetChapter")
+-        _require_nonempty(chapter.id, f"{label}.id")
++        _validate_safe_basename(chapter.id, f"{label}.id")
+         if type(chapter.source_number) is not int or chapter.source_number <= 0:
+             raise RenderPlanSetError(f"{label}.source_number must be a positive integer")
+-        for key in ("source", "utterplan", "renderplan"):
+-            _require_nonempty(getattr(chapter, key), f"{label}.{key}")
+-        renderplan_path = PurePosixPath(chapter.renderplan)
+-        if (
+-            "\x00" in chapter.renderplan
+-            or "\\" in chapter.renderplan
+-            or renderplan_path.is_absolute()
+-            or PureWindowsPath(chapter.renderplan).drive
+-            or not renderplan_path.parts
+-            or any(part in {".", ".."} for part in renderplan_path.parts)
+-            or renderplan_path.as_posix() != chapter.renderplan
+-        ):
+-            raise RenderPlanSetError(
+-                f"{label}.renderplan must be a normalized relative path inside the variant"
+-            )
+-        for key in ("source_plan_id", "render_plan_id"):
+-            plan_id = getattr(chapter, key)
++        for field in ("source", "utterplan", "renderplan"):
++            _require_nonempty(getattr(chapter, field), f"{label}.{field}")
++        _validate_posix_reference(chapter.source, f"{label}.source", allow_parent=True)
++        _validate_posix_reference(chapter.utterplan, f"{label}.utterplan", allow_parent=True)
++        _validate_posix_reference(chapter.renderplan, f"{label}.renderplan", allow_parent=False)
++        for field in ("source_plan_id", "render_plan_id"):
++            plan_id = getattr(chapter, field)
+             if not isinstance(plan_id, str) or not _PROFILE_ID_RE.fullmatch(plan_id):
+-                raise RenderPlanSetError(f"{label}.{key} must be a full sha256 identity")
++                raise RenderPlanSetError(f"{label}.{field} must be a full sha256 identity")
++
+         if chapter.id in seen_ids:
+-            raise RenderPlanSetError(f"duplicate chapter id: {chapter.id}")
++            raise RenderPlanSetError(
++                f"duplicate chapter id: {chapter.id}", code="index.chapter.duplicate"
++            )
+         if chapter.source_number in seen_numbers:
+-            raise RenderPlanSetError(f"duplicate chapter source_number: {chapter.source_number}")
++            raise RenderPlanSetError(
++                f"duplicate chapter source_number: {chapter.source_number}",
++                code="index.chapter.source_number.duplicate",
++            )
+         if chapter.renderplan in seen_renderplan_paths:
+-            raise RenderPlanSetError(f"duplicate renderplan path: {chapter.renderplan}")
++            raise RenderPlanSetError(
++                f"duplicate renderplan path: {chapter.renderplan}",
++                code="index.renderplan_path.duplicate",
++            )
+         seen_ids.add(chapter.id)
+         seen_numbers.add(chapter.source_number)
+         seen_renderplan_paths.add(chapter.renderplan)
+
+
+ def renderplan_set_to_dict(value: RenderPlanSet) -> dict[str, Any]:
+-    """Return the stable plain-data representation for renderplan-set.toml."""
++    """Return the canonical plain-data representation for renderplan-set.toml."""
+     validate_renderplan_set(value)
+     return {
+         "format": RENDERPLAN_SET_FORMAT,
+         "version": RENDERPLAN_SET_VERSION,
+         "variant": value.variant,
+         "profile_fingerprint": value.profile_fingerprint,
+-        "producer": {"name": "utterplan", "version": value.producer_version},
+-        "book": {"manifest": value.manifest, "utterplan_dir": value.utterplan_dir},
++        "producer_version": value.producer_version,
++        "manifest": value.manifest,
++        "utterplan_dir": value.utterplan_dir,
+         "profile": {
+-            "profile_id": value.profile_id,
++            "id": value.profile_id,
+             "snapshot": value.snapshot,
+             "source": value.source_profile,
+         },
+@@ -156,62 +171,71 @@ def renderplan_set_to_dict(value: RenderPlanSet) -> dict[str, Any]:
+
+
+ def renderplan_set_to_toml(value: RenderPlanSet) -> str:
+-    """Serialize a validated set as TOML workspace metadata."""
++    """Serialize a validated set as deterministic UTF-8 TOML text."""
+     return toml_dumps(renderplan_set_to_dict(value))
+
+
+ def renderplan_set_from_dict(raw: Mapping[str, Any]) -> RenderPlanSet:
+     """Parse plain TOML data and strictly validate every supported set field."""
+-    _check_keys(
+-        raw,
+-        {"format", "version", "variant", "profile_fingerprint", "producer", "book", "profile", "chapter"},
+-        "renderplan-set",
+-    )
++    root_fields = {
++        "format",
++        "version",
++        "variant",
++        "profile_fingerprint",
++        "producer_version",
++        "manifest",
++        "utterplan_dir",
++        "profile",
++        "chapter",
++    }
++    _check_keys(raw, root_fields, "renderplan-set")
+     if raw.get("format") != RENDERPLAN_SET_FORMAT:
+         raise RenderPlanSetError(f"format must be {RENDERPLAN_SET_FORMAT!r}")
+     if type(raw.get("version")) is not int or raw["version"] != RENDERPLAN_SET_VERSION:
+         raise RenderPlanSetError(f"version must be {RENDERPLAN_SET_VERSION}")
+
+-    producer = _table(raw.get("producer"), "producer")
+-    _check_keys(producer, {"name", "version"}, "producer")
+-    if producer.get("name") != "utterplan":
+-        raise RenderPlanSetError("producer.name must be 'utterplan'")
+-    book = _table(raw.get("book"), "book")
+-    _check_keys(book, {"manifest", "utterplan_dir"}, "book")
+-    profile = _table(raw.get("profile"), "profile")
+-    _check_keys(profile, {"profile_id", "snapshot", "source"}, "profile")
+-
+-    chapter_data = raw.get("chapter")
++    profile = _table(raw["profile"], "profile")
++    _check_keys(profile, {"id", "snapshot", "source"}, "profile")
++    chapter_data = raw["chapter"]
+     if not isinstance(chapter_data, list):
+         raise RenderPlanSetError("chapter must be an array of tables")
++
+     chapters: list[RenderPlanSetChapter] = []
+-    chapter_keys = {
+-        "id", "source_number", "source", "utterplan", "source_plan_id", "renderplan", "render_plan_id"
++    chapter_fields = {
++        "id",
++        "source_number",
++        "source",
++        "utterplan",
++        "source_plan_id",
++        "renderplan",
++        "render_plan_id",
+     }
+     for index, item in enumerate(chapter_data):
+-        item_table = _table(item, f"chapter[{index}]")
+-        _check_keys(item_table, chapter_keys, f"chapter[{index}]")
+-        source_number = item_table.get("source_number")
++        label = f"chapter[{index}]"
++        table = _table(item, label)
++        _check_keys(table, chapter_fields, label)
++        source_number = table["source_number"]
+         if type(source_number) is not int:
+-            raise RenderPlanSetError(f"chapter[{index}].source_number must be an integer")
++            raise RenderPlanSetError(f"{label}.source_number must be an integer")
+         chapters.append(
+             RenderPlanSetChapter(
+-                id=_string(item_table, "id", f"chapter[{index}]"),
++                id=_string(table, "id", label),
+                 source_number=source_number,
+-                source=_string(item_table, "source", f"chapter[{index}]"),
+-                utterplan=_string(item_table, "utterplan", f"chapter[{index}]"),
+-                source_plan_id=_string(item_table, "source_plan_id", f"chapter[{index}]"),
+-                renderplan=_string(item_table, "renderplan", f"chapter[{index}]"),
+-                render_plan_id=_string(item_table, "render_plan_id", f"chapter[{index}]"),
++                source=_string(table, "source", label),
++                utterplan=_string(table, "utterplan", label),
++                source_plan_id=_string(table, "source_plan_id", label),
++                renderplan=_string(table, "renderplan", label),
++                render_plan_id=_string(table, "render_plan_id", label),
+             )
+         )
++
+     return RenderPlanSet(
+         variant=_string(raw, "variant", "renderplan-set"),
+         profile_fingerprint=_string(raw, "profile_fingerprint", "renderplan-set"),
+-        producer_version=_string(producer, "version", "producer"),
+-        manifest=_string(book, "manifest", "book"),
+-        utterplan_dir=_string(book, "utterplan_dir", "book"),
+-        profile_id=_string(profile, "profile_id", "profile"),
++        producer_version=_string(raw, "producer_version", "renderplan-set"),
++        manifest=_string(raw, "manifest", "renderplan-set"),
++        utterplan_dir=_string(raw, "utterplan_dir", "renderplan-set"),
++        profile_id=_string(profile, "id", "profile"),
+         snapshot=_string(profile, "snapshot", "profile"),
+         source_profile=_string(profile, "source", "profile"),
+         chapters=tuple(chapters),
+@@ -222,19 +246,16 @@ def load_renderplan_set(path: str | Path) -> RenderPlanSet:
+     """Read a set index; malformed documents fail closed instead of being replaced."""
+     source = Path(path)
+     try:
+-        with source.open("rb") as stream:
+-            raw = tomllib.load(stream)
+-    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
++        raw = renderplan_codec._read(source)
++    except CodecError as exc:
+         raise RenderPlanSetError(
+             f"cannot read renderplan set {source}: {exc}", code="index.read_failed"
+         ) from exc
+-    if not isinstance(raw, Mapping):
+-        raise RenderPlanSetError("renderplan-set root must be a table")
+-    return renderplan_set_from_dict(cast(Mapping[str, Any], raw))
++    return renderplan_set_from_dict(raw)
+
+
+ def save_renderplan_set(path: str | Path, value: RenderPlanSet) -> Path:
+-    """Atomically write a validated set index."""
++    """Atomically write a validated set index via a sibling temporary file."""
+     destination = Path(path)
+     text = renderplan_set_to_toml(value)
+     temporary: Path | None = None
+@@ -244,7 +265,7 @@ def save_renderplan_set(path: str | Path, value: RenderPlanSet) -> Path:
+             prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+         )
+         temporary = Path(temporary_name)
+-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
++        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+             stream.write(text)
+             stream.flush()
+             os.fsync(stream.fileno())
+@@ -263,15 +284,22 @@ def validate_renderplan_set_profile(
+     value: RenderPlanSet,
+     snapshot_path: str | Path,
+     *,
+-    expected_profile_id: str,
++    expected_profile_id: str | None = None,
+ ) -> RenderProfile:
+-    """Verify the set and canonical snapshot against the active RenderProfile identity."""
++    """Verify a canonical snapshot against the set and optional active profile identity."""
+     validate_renderplan_set(value)
+-    if value.profile_id != expected_profile_id:
+-        raise RenderPlanSetError(
+-            "existing renderplan set profile_id does not match the active RenderProfile",
+-            code="profile.identity_mismatch",
+-        )
++    if expected_profile_id is not None:
++        if not _PROFILE_ID_RE.fullmatch(expected_profile_id):
++            raise RenderPlanSetError(
++                "expected_profile_id must be a full sha256 identity",
++                code="profile.identity_mismatch",
++            )
++        if value.profile_id != expected_profile_id:
++            raise RenderPlanSetError(
++                "existing renderplan set profile_id does not match the active RenderProfile",
++                code="profile.identity_mismatch",
++            )
++
+     snapshot = Path(snapshot_path)
+     if not snapshot.is_file():
+         raise RenderPlanSetError(
+@@ -279,28 +307,38 @@ def validate_renderplan_set_profile(
+         )
+     try:
+         profile = renderplan_codec.load_profile(snapshot)
+-    except (OSError, ValueError, TypeError) as exc:
++    except (CodecError, OSError, ValueError, TypeError) as exc:
+         raise RenderPlanSetError(
+             f"cannot load RenderProfile snapshot {snapshot}: {exc}",
+             code="profile.snapshot_invalid",
+         ) from exc
+     snapshot_id = profile.profile_id or profile.computed_id()
+-    if snapshot_id != value.profile_id or snapshot_id != expected_profile_id:
++    if snapshot_id != value.profile_id or (
++        expected_profile_id is not None and snapshot_id != expected_profile_id
++    ):
+         raise RenderPlanSetError(
+             "RenderProfile snapshot identity does not match the set and active profile",
+-            code="profile.snapshot_mismatch",
++            code="profile.identity_mismatch",
+         )
+     return profile
+
+
+ def _check_keys(raw: Mapping[str, Any], allowed: set[str], label: str) -> None:
+-    unknown = set(raw) - allowed
+-    missing = allowed - set(raw)
++    if any(not isinstance(key, str) for key in raw):
++        raise RenderPlanSetError(
++            f"{label} contains non-string field names", code="index.field.unknown"
++        )
++    unknown = set(raw).difference(allowed)
++    missing = allowed.difference(raw)
+     if unknown:
+-        raise RenderPlanSetError(f"{label} contains unknown field(s): {', '.join(sorted(unknown))}")
++        fields = ", ".join(sorted(unknown))
++        raise RenderPlanSetError(
++            f"{label} contains unknown field(s): {fields}", code="index.field.unknown"
++        )
+     if missing:
++        fields = ", ".join(sorted(missing))
+         raise RenderPlanSetError(
+-            f"{label} is missing required field(s): {', '.join(sorted(missing))}"
++            f"{label} is missing required field(s): {fields}", code="index.field.required"
+         )
+
+
+@@ -322,6 +360,23 @@ def _require_nonempty(value: Any, label: str) -> None:
+         raise RenderPlanSetError(f"{label} must be a non-empty string")
+
+
++def _validate_safe_basename(value: str, label: str) -> None:
++    try:
++        validate_safe_basename(value, field=label)
++    except ValidationError as exc:
++        raise RenderPlanSetError(str(exc)) from exc
++
++
++def _validate_posix_reference(value: str, label: str, *, allow_parent: bool) -> None:
++    try:
++        if allow_parent:
++            validate_posix_relative_reference(value, allow_parent=True, field=label)
++        else:
++            validate_contained_relative_path(value, field=label)
++    except ValidationError as exc:
++        raise RenderPlanSetError(str(exc)) from exc
++
++
+ __all__ = [
+     "RENDERPLAN_SET_FORMAT",
+     "RENDERPLAN_SET_VERSION",
+diff --git a/renderplan/contracts.py b/renderplan/contracts.py
+new file mode 100644
+index 0000000..08ca38c
+--- /dev/null
++++ b/renderplan/contracts.py
+@@ -0,0 +1,33 @@
++"""Public compatibility view of the supported RenderPlan interchange contracts."""
++
++from __future__ import annotations
++
++from collections.abc import Mapping
++from types import MappingProxyType
++
++from .collection import RENDERPLAN_SET_FORMAT, RENDERPLAN_SET_VERSION
++from .model import (
++    MANIFEST_FORMAT,
++    PLAN_FORMAT,
++    PREFLIGHT_FORMAT,
++    PROFILE_FORMAT,
++    SCHEMA_VERSION,
++)
++
++CONTRACTS: Mapping[str, int] = MappingProxyType(
++    {
++        PROFILE_FORMAT: SCHEMA_VERSION,
++        PLAN_FORMAT: SCHEMA_VERSION,
++        PREFLIGHT_FORMAT: SCHEMA_VERSION,
++        MANIFEST_FORMAT: SCHEMA_VERSION,
++        RENDERPLAN_SET_FORMAT: RENDERPLAN_SET_VERSION,
++    }
++)
++
++
++def supported_contracts() -> Mapping[str, int]:
++    """Return the immutable mapping of supported document formats to versions."""
++    return CONTRACTS
++
++
++__all__ = ["CONTRACTS", "supported_contracts"]
+diff --git a/renderplan/paths.py b/renderplan/paths.py
+new file mode 100644
+index 0000000..62750c2
+--- /dev/null
++++ b/renderplan/paths.py
+@@ -0,0 +1,72 @@
++"""Pure lexical path validators for shared RenderPlan handoff contracts."""
++
++from __future__ import annotations
++
++from pathlib import PurePosixPath, PureWindowsPath
++
++from .errors import ValidationError
++
++
++def validate_safe_basename(value: str, *, field: str = "path") -> str:
++    """Return a safe single POSIX basename or raise ``ValidationError``."""
++    if not isinstance(value, str) or not value:
++        raise ValidationError(f"{field} must be a non-empty safe basename")
++    path = PurePosixPath(value)
++    if (
++        value in {".", ".."}
++        or "\x00" in value
++        or "/" in value
++        or "\\" in value
++        or bool(PureWindowsPath(value).drive)
++        or path.name != value
++        or path.as_posix() != value
++    ):
++        raise ValidationError(f"{field} must be a safe single basename")
++    return value
++
++
++def validate_posix_relative_reference(
++    value: str, *, allow_parent: bool = True, field: str = "path"
++) -> str:
++    """Validate normalized relative POSIX spelling, optionally allowing leading ``..``."""
++    if not isinstance(value, str) or not value:
++        raise ValidationError(f"{field} must be a non-empty relative POSIX reference")
++    path = PurePosixPath(value)
++    invalid = (
++        "\x00" in value
++        or "\\" in value
++        or path.is_absolute()
++        or bool(PureWindowsPath(value).drive)
++        or not path.parts
++        or path.as_posix() != value
++        or value == "."
++    )
++    stack: list[str] = []
++    for part in path.parts:
++        if part == "..":
++            if not allow_parent or (stack and stack[-1] != ".."):
++                invalid = True
++            else:
++                stack.append(part)
++        else:
++            stack.append(part)
++    if invalid:
++        suffix = (
++            "relative POSIX reference"
++            if allow_parent
++            else "relative path contained inside its base directory (POSIX syntax)"
++        )
++        raise ValidationError(f"{field} must be a normalized {suffix}")
++    return value
++
++
++def validate_contained_relative_path(value: str, *, field: str = "path") -> str:
++    """Validate a normalized relative POSIX path that cannot escape its base directory."""
++    return validate_posix_relative_reference(value, allow_parent=False, field=field)
++
++
++__all__ = [
++    "validate_contained_relative_path",
++    "validate_posix_relative_reference",
++    "validate_safe_basename",
++]
+diff --git a/renderplan/set.py b/renderplan/set.py
+index c3eef35..a746945 100644
+--- a/renderplan/set.py
++++ b/renderplan/set.py
+@@ -1,326 +1,19 @@
+-"""Portable RenderPlan-set v1 index contract.
+-
+-The set is workspace metadata produced by UtterPlan and consumed by downstream
+-RenderPlan tools. Its existing on-disk format name is retained for compatibility.
+-"""
+-
+-from __future__ import annotations
+-
+-import importlib
+-import os
+-import re
+-import tempfile
+-from collections.abc import Mapping
+-from dataclasses import dataclass
+-from pathlib import Path, PurePosixPath, PureWindowsPath
+-from typing import Any, cast
+-
+-from . import codec as renderplan_codec
+-from ._toml import dumps as toml_dumps
+-from .errors import RenderPlanError
+-from .model import RenderProfile
+-
+-try:
+-    tomllib: Any = importlib.import_module("tomllib")
+-except ModuleNotFoundError:  # pragma: no cover - Python 3.10
+-    tomllib = importlib.import_module("tomli")
+-
+-RENDERPLAN_SET_FORMAT = "utterplan-renderplan-set"
+-RENDERPLAN_SET_VERSION = 1
+-_PROFILE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+-_FINGERPRINT_RE = re.compile(r"^[0-9a-f]{12}$")
+-
+-
+-class RenderPlanSetError(RenderPlanError):
+-    """Invalid, unreadable, or unwritable RenderPlan-set metadata."""
+-
+-    def __init__(self, message: str, *, code: str = "index.invalid") -> None:
+-        super().__init__(message)
+-        self.code = code
+-
+-
+-@dataclass(frozen=True, slots=True)
+-class RenderPlanSetChapter:
+-    """One successfully written chapter projection in a RenderPlan set."""
+-
+-    id: str
+-    source_number: int
+-    source: str
+-    utterplan: str
+-    source_plan_id: str
+-    renderplan: str
+-    render_plan_id: str
+-
+-
+-@dataclass(frozen=True, slots=True)
+-class RenderPlanSet:
+-    """Workspace index for one immutable RenderProfile identity."""
+-
+-    variant: str
+-    profile_fingerprint: str
+-    producer_version: str
+-    manifest: str
+-    utterplan_dir: str
+-    profile_id: str
+-    snapshot: str
+-    source_profile: str
+-    chapters: tuple[RenderPlanSetChapter, ...] = ()
+-
+-    def __post_init__(self) -> None:
+-        validate_renderplan_set(self)
+-
+-
+-def validate_renderplan_set(value: RenderPlanSet) -> None:
+-    """Reject malformed set values before they are read from or written to disk."""
+-    for field in ("variant", "producer_version", "manifest", "utterplan_dir", "snapshot", "source_profile"):
+-        _require_nonempty(getattr(value, field), field)
+-    if value.snapshot != "renderprofile.toml":
+-        raise RenderPlanSetError("profile.snapshot must be the canonical 'renderprofile.toml' file")
+-    if not _PROFILE_ID_RE.fullmatch(value.profile_id):
+-        raise RenderPlanSetError("profile.profile_id must be a full sha256 identity")
+-    if not _FINGERPRINT_RE.fullmatch(value.profile_fingerprint):
+-        raise RenderPlanSetError("profile_fingerprint must be 12 lowercase hexadecimal characters")
+-    if value.profile_fingerprint != value.profile_id.removeprefix("sha256:")[:12]:
+-        raise RenderPlanSetError("profile_fingerprint does not match profile.profile_id")
+-    if not isinstance(value.chapters, tuple):
+-        raise RenderPlanSetError("chapter entries must be a tuple")
+-
+-    seen_ids: set[str] = set()
+-    seen_numbers: set[int] = set()
+-    seen_renderplan_paths: set[str] = set()
+-    for index, chapter in enumerate(value.chapters):
+-        label = f"chapter[{index}]"
+-        if not isinstance(chapter, RenderPlanSetChapter):
+-            raise RenderPlanSetError(f"{label} must be a RenderPlanSetChapter")
+-        _require_nonempty(chapter.id, f"{label}.id")
+-        if type(chapter.source_number) is not int or chapter.source_number <= 0:
+-            raise RenderPlanSetError(f"{label}.source_number must be a positive integer")
+-        for key in ("source", "utterplan", "renderplan"):
+-            _require_nonempty(getattr(chapter, key), f"{label}.{key}")
+-        renderplan_path = PurePosixPath(chapter.renderplan)
+-        if (
+-            "\x00" in chapter.renderplan
+-            or "\\" in chapter.renderplan
+-            or renderplan_path.is_absolute()
+-            or PureWindowsPath(chapter.renderplan).drive
+-            or not renderplan_path.parts
+-            or any(part in {".", ".."} for part in renderplan_path.parts)
+-            or renderplan_path.as_posix() != chapter.renderplan
+-        ):
+-            raise RenderPlanSetError(
+-                f"{label}.renderplan must be a normalized relative path inside the variant"
+-            )
+-        for key in ("source_plan_id", "render_plan_id"):
+-            plan_id = getattr(chapter, key)
+-            if not isinstance(plan_id, str) or not _PROFILE_ID_RE.fullmatch(plan_id):
+-                raise RenderPlanSetError(f"{label}.{key} must be a full sha256 identity")
+-        if chapter.id in seen_ids:
+-            raise RenderPlanSetError(f"duplicate chapter id: {chapter.id}")
+-        if chapter.source_number in seen_numbers:
+-            raise RenderPlanSetError(f"duplicate chapter source_number: {chapter.source_number}")
+-        if chapter.renderplan in seen_renderplan_paths:
+-            raise RenderPlanSetError(f"duplicate renderplan path: {chapter.renderplan}")
+-        seen_ids.add(chapter.id)
+-        seen_numbers.add(chapter.source_number)
+-        seen_renderplan_paths.add(chapter.renderplan)
+-
+-
+-def renderplan_set_to_dict(value: RenderPlanSet) -> dict[str, Any]:
+-    """Return the stable plain-data representation for renderplan-set.toml."""
+-    validate_renderplan_set(value)
+-    return {
+-        "format": RENDERPLAN_SET_FORMAT,
+-        "version": RENDERPLAN_SET_VERSION,
+-        "variant": value.variant,
+-        "profile_fingerprint": value.profile_fingerprint,
+-        "producer": {"name": "utterplan", "version": value.producer_version},
+-        "book": {"manifest": value.manifest, "utterplan_dir": value.utterplan_dir},
+-        "profile": {
+-            "profile_id": value.profile_id,
+-            "snapshot": value.snapshot,
+-            "source": value.source_profile,
+-        },
+-        "chapter": [
+-            {
+-                "id": chapter.id,
+-                "source_number": chapter.source_number,
+-                "source": chapter.source,
+-                "utterplan": chapter.utterplan,
+-                "source_plan_id": chapter.source_plan_id,
+-                "renderplan": chapter.renderplan,
+-                "render_plan_id": chapter.render_plan_id,
+-            }
+-            for chapter in value.chapters
+-        ],
+-    }
+-
+-
+-def renderplan_set_to_toml(value: RenderPlanSet) -> str:
+-    """Serialize a validated set as TOML workspace metadata."""
+-    return toml_dumps(renderplan_set_to_dict(value))
+-
+-
+-def renderplan_set_from_dict(raw: Mapping[str, Any]) -> RenderPlanSet:
+-    """Parse plain TOML data and strictly validate every supported set field."""
+-    _check_keys(
+-        raw,
+-        {"format", "version", "variant", "profile_fingerprint", "producer", "book", "profile", "chapter"},
+-        "renderplan-set",
+-    )
+-    if raw.get("format") != RENDERPLAN_SET_FORMAT:
+-        raise RenderPlanSetError(f"format must be {RENDERPLAN_SET_FORMAT!r}")
+-    if type(raw.get("version")) is not int or raw["version"] != RENDERPLAN_SET_VERSION:
+-        raise RenderPlanSetError(f"version must be {RENDERPLAN_SET_VERSION}")
+-
+-    producer = _table(raw.get("producer"), "producer")
+-    _check_keys(producer, {"name", "version"}, "producer")
+-    if producer.get("name") != "utterplan":
+-        raise RenderPlanSetError("producer.name must be 'utterplan'")
+-    book = _table(raw.get("book"), "book")
+-    _check_keys(book, {"manifest", "utterplan_dir"}, "book")
+-    profile = _table(raw.get("profile"), "profile")
+-    _check_keys(profile, {"profile_id", "snapshot", "source"}, "profile")
+-
+-    chapter_data = raw.get("chapter")
+-    if not isinstance(chapter_data, list):
+-        raise RenderPlanSetError("chapter must be an array of tables")
+-    chapters: list[RenderPlanSetChapter] = []
+-    chapter_keys = {
+-        "id", "source_number", "source", "utterplan", "source_plan_id", "renderplan", "render_plan_id"
+-    }
+-    for index, item in enumerate(chapter_data):
+-        item_table = _table(item, f"chapter[{index}]")
+-        _check_keys(item_table, chapter_keys, f"chapter[{index}]")
+-        source_number = item_table.get("source_number")
+-        if type(source_number) is not int:
+-            raise RenderPlanSetError(f"chapter[{index}].source_number must be an integer")
+-        chapters.append(
+-            RenderPlanSetChapter(
+-                id=_string(item_table, "id", f"chapter[{index}]"),
+-                source_number=source_number,
+-                source=_string(item_table, "source", f"chapter[{index}]"),
+-                utterplan=_string(item_table, "utterplan", f"chapter[{index}]"),
+-                source_plan_id=_string(item_table, "source_plan_id", f"chapter[{index}]"),
+-                renderplan=_string(item_table, "renderplan", f"chapter[{index}]"),
+-                render_plan_id=_string(item_table, "render_plan_id", f"chapter[{index}]"),
+-            )
+-        )
+-    return RenderPlanSet(
+-        variant=_string(raw, "variant", "renderplan-set"),
+-        profile_fingerprint=_string(raw, "profile_fingerprint", "renderplan-set"),
+-        producer_version=_string(producer, "version", "producer"),
+-        manifest=_string(book, "manifest", "book"),
+-        utterplan_dir=_string(book, "utterplan_dir", "book"),
+-        profile_id=_string(profile, "profile_id", "profile"),
+-        snapshot=_string(profile, "snapshot", "profile"),
+-        source_profile=_string(profile, "source", "profile"),
+-        chapters=tuple(chapters),
+-    )
+-
+-
+-def load_renderplan_set(path: str | Path) -> RenderPlanSet:
+-    """Read a set index; malformed documents fail closed instead of being replaced."""
+-    source = Path(path)
+-    try:
+-        with source.open("rb") as stream:
+-            raw = tomllib.load(stream)
+-    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+-        raise RenderPlanSetError(
+-            f"cannot read renderplan set {source}: {exc}", code="index.read_failed"
+-        ) from exc
+-    if not isinstance(raw, Mapping):
+-        raise RenderPlanSetError("renderplan-set root must be a table")
+-    return renderplan_set_from_dict(cast(Mapping[str, Any], raw))
+-
+-
+-def save_renderplan_set(path: str | Path, value: RenderPlanSet) -> Path:
+-    """Atomically write a validated set index."""
+-    destination = Path(path)
+-    text = renderplan_set_to_toml(value)
+-    temporary: Path | None = None
+-    try:
+-        destination.parent.mkdir(parents=True, exist_ok=True)
+-        descriptor, temporary_name = tempfile.mkstemp(
+-            prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
+-        )
+-        temporary = Path(temporary_name)
+-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+-            stream.write(text)
+-            stream.flush()
+-            os.fsync(stream.fileno())
+-        os.replace(temporary, destination)
+-    except OSError as exc:
+-        raise RenderPlanSetError(
+-            f"cannot write renderplan set {destination}: {exc}", code="index.write_failed"
+-        ) from exc
+-    finally:
+-        if temporary is not None:
+-            temporary.unlink(missing_ok=True)
+-    return destination
+-
+-
+-def validate_renderplan_set_profile(
+-    value: RenderPlanSet,
+-    snapshot_path: str | Path,
+-    *,
+-    expected_profile_id: str,
+-) -> RenderProfile:
+-    """Verify the set and canonical snapshot against the active RenderProfile identity."""
+-    validate_renderplan_set(value)
+-    if value.profile_id != expected_profile_id:
+-        raise RenderPlanSetError(
+-            "existing renderplan set profile_id does not match the active RenderProfile",
+-            code="profile.identity_mismatch",
+-        )
+-    snapshot = Path(snapshot_path)
+-    if not snapshot.is_file():
+-        raise RenderPlanSetError(
+-            f"RenderProfile snapshot is missing: {snapshot}", code="profile.snapshot_missing"
+-        )
+-    try:
+-        profile = renderplan_codec.load_profile(snapshot)
+-    except (OSError, ValueError, TypeError) as exc:
+-        raise RenderPlanSetError(
+-            f"cannot load RenderProfile snapshot {snapshot}: {exc}",
+-            code="profile.snapshot_invalid",
+-        ) from exc
+-    snapshot_id = profile.profile_id or profile.computed_id()
+-    if snapshot_id != value.profile_id or snapshot_id != expected_profile_id:
+-        raise RenderPlanSetError(
+-            "RenderProfile snapshot identity does not match the set and active profile",
+-            code="profile.snapshot_mismatch",
+-        )
+-    return profile
+-
+-
+-def _check_keys(raw: Mapping[str, Any], allowed: set[str], label: str) -> None:
+-    unknown = set(raw) - allowed
+-    missing = allowed - set(raw)
+-    if unknown:
+-        raise RenderPlanSetError(f"{label} contains unknown field(s): {', '.join(sorted(unknown))}")
+-    if missing:
+-        raise RenderPlanSetError(
+-            f"{label} is missing required field(s): {', '.join(sorted(missing))}"
+-        )
+-
+-
+-def _table(value: Any, label: str) -> Mapping[str, Any]:
+-    if not isinstance(value, Mapping):
+-        raise RenderPlanSetError(f"{label} must be a table")
+-    return cast(Mapping[str, Any], value)
+-
+-
+-def _string(raw: Mapping[str, Any], key: str, label: str) -> str:
+-    value = raw.get(key)
+-    if not isinstance(value, str) or not value:
+-        raise RenderPlanSetError(f"{label}.{key} must be a non-empty string")
+-    return value
+-
+-
+-def _require_nonempty(value: Any, label: str) -> None:
+-    if not isinstance(value, str) or not value:
+-        raise RenderPlanSetError(f"{label} must be a non-empty string")
+-
++"""Backward-compatible import location for the RenderPlan-set collection API."""
++
++from .collection import (
++    RENDERPLAN_SET_FORMAT,
++    RENDERPLAN_SET_VERSION,
++    RenderPlanSet,
++    RenderPlanSetChapter,
++    RenderPlanSetError,
++    load_renderplan_set,
++    renderplan_set_from_dict,
++    renderplan_set_to_dict,
++    renderplan_set_to_toml,
++    save_renderplan_set,
++    validate_renderplan_set,
++    validate_renderplan_set_profile,
++)
+
+ __all__ = [
+     "RENDERPLAN_SET_FORMAT",
+diff --git a/renderplan/validation.py b/renderplan/validation.py
+new file mode 100644
+index 0000000..e60e791
+--- /dev/null
++++ b/renderplan/validation.py
+@@ -0,0 +1,56 @@
++"""Pure cross-artifact validation helpers for RenderPlan handoffs."""
++
++from __future__ import annotations
++
++from .collection import RenderPlanSet, RenderPlanSetChapter, validate_renderplan_set
++from .errors import ValidationError
++from .model import PreflightReport, RenderManifest, RenderPlan, RenderProfile
++
++
++def validate_plan_profile(plan: RenderPlan, profile: RenderProfile) -> None:
++    """Validate that a plan is internally compatible with its RenderProfile."""
++    plan.validate_against_profile(profile)
++
++
++def validate_preflight_handoff(
++    plan: RenderPlan, report: PreflightReport, *, require_ok: bool = False
++) -> None:
++    """Validate preflight identity/content against a plan, optionally requiring success."""
++    report.validate_against(plan)
++    if require_ok and report.status != "ok":
++        raise ValidationError(
++            f"preflight status must be 'ok' for execution; got {report.status!r}"
++        )
++
++
++def validate_manifest_handoff(
++    plan: RenderPlan, manifest: RenderManifest, *, require_complete: bool = False
++) -> None:
++    """Validate manifest membership against a plan, optionally requiring completeness."""
++    manifest.validate_against(plan)
++    if require_complete and not manifest.complete:
++        raise ValidationError("render manifest must be complete for this handoff")
++
++
++def validate_set_chapter_plan(
++    renderplan_set: RenderPlanSet, chapter: RenderPlanSetChapter, plan: RenderPlan
++) -> None:
++    """Validate a chapter's plan and profile identities against its containing set."""
++    validate_renderplan_set(renderplan_set)
++    if chapter not in renderplan_set.chapters:
++        raise ValidationError("chapter is not a member of the RenderPlan set")
++    actual_plan_id = plan.plan_id or plan.computed_id()
++    if chapter.render_plan_id != actual_plan_id:
++        raise ValidationError("chapter render_plan_id does not match the RenderPlan")
++    if chapter.source_plan_id != plan.source_plan_id:
++        raise ValidationError("chapter source_plan_id does not match the RenderPlan")
++    if plan.render_profile_id != renderplan_set.profile_id:
++        raise ValidationError("RenderPlan render_profile_id does not match the RenderPlan set")
++
++
++__all__ = [
++    "validate_manifest_handoff",
++    "validate_plan_profile",
++    "validate_preflight_handoff",
++    "validate_set_chapter_plan",
++]
+diff --git a/tests/test_collection.py b/tests/test_collection.py
+new file mode 100644
+index 0000000..2b428b8
+--- /dev/null
++++ b/tests/test_collection.py
+@@ -0,0 +1,348 @@
++from __future__ import annotations
++
++from dataclasses import replace
++from pathlib import Path
++
++import pytest
++
++from renderplan import (
++    PausePolicy,
++    PlanningPolicy,
++    RenderPlanSet,
++    RenderPlanSetChapter,
++    RenderPlanSetError,
++    RenderProfile,
++    RoleProfile,
++    collection,
++    load_any,
++    load_renderplan_set,
++    renderplan_set_from_dict,
++    renderplan_set_to_dict,
++    renderplan_set_to_toml,
++    save_profile,
++    save_renderplan_set,
++    validate_renderplan_set_profile,
++)
++
++SOURCE_PLAN_ID = "sha256:" + "b" * 64
++RENDER_PLAN_ID = "sha256:" + "c" * 64
++
++
++def _profile(binding: str = "fixture") -> RenderProfile:
++    return RenderProfile(
++        roles={"narrator": RoleProfile(language="en-US", binding={"engine": binding})},
++        default_role="narrator",
++        planning=PlanningPolicy(split="sentence"),
++        pauses=PausePolicy(mode="manual"),
++    ).with_identity()
++
++
++def _chapter(
++    *,
++    chapter_id: str = "chapter-0005",
++    source_number: int = 5,
++    source: str = "../../chapters/chapter-0005.ssmd.md",
++    utterplan: str = "../../utterplan/chapter-0005.utterplan.toml",
++    renderplan: str = "chapter-0005.renderplan.toml",
++) -> RenderPlanSetChapter:
++    return RenderPlanSetChapter(
++        id=chapter_id,
++        source_number=source_number,
++        source=source,
++        utterplan=utterplan,
++        source_plan_id=SOURCE_PLAN_ID,
++        renderplan=renderplan,
++        render_plan_id=RENDER_PLAN_ID,
++    )
++
++
++def _set(
++    *,
++    profile: RenderProfile | None = None,
++    chapters: tuple[RenderPlanSetChapter, ...] | None = None,
++    variant: str = "narration",
++) -> RenderPlanSet:
++    selected_profile = profile or _profile()
++    profile_id = selected_profile.profile_id or selected_profile.computed_id()
++    return RenderPlanSet(
++        variant=variant,
++        profile_fingerprint=profile_id.removeprefix("sha256:")[:12],
++        producer_version="0.5.1",
++        manifest="../../manifest.json",
++        utterplan_dir="../../utterplan",
++        profile_id=profile_id,
++        snapshot="renderprofile.toml",
++        source_profile="../../narration.renderprofile.toml",
++        chapters=chapters if chapters is not None else (_chapter(),),
++    )
++
++
++def _raw(value: RenderPlanSet | None = None) -> dict[str, object]:
++    return renderplan_set_to_dict(value or _set())
++
++
++def test_collection_model_construction_and_canonical_fields() -> None:
++    value = _set()
++    assert value.format == "renderplan-set"
++    assert value.version == 1
++    assert value.chapters == (_chapter(),)
++    raw = _raw(value)
++    assert raw["format"] == "renderplan-set"
++    assert raw["profile"] == {
++        "id": value.profile_id,
++        "snapshot": "renderprofile.toml",
++        "source": "../../narration.renderprofile.toml",
++    }
++    assert "producer_version" in raw
++    assert "producer" not in raw and "book" not in raw
++
++
++def test_collection_toml_roundtrip_and_chapter_order() -> None:
++    later = _chapter(
++        chapter_id="chapter-0008",
++        source_number=8,
++        renderplan="chapter-0008.renderplan.toml",
++    )
++    earlier = _chapter(
++        chapter_id="chapter-0002",
++        source_number=2,
++        renderplan="chapter-0002.renderplan.toml",
++    )
++    value = _set(chapters=(later, earlier))
++    text = renderplan_set_to_toml(value)
++    assert text == renderplan_set_to_toml(value)
++    assert text.count("[[chapter]]") == 2
++    assert text.index('id = "chapter-0008"') < text.index('id = "chapter-0002"')
++    assert renderplan_set_from_dict(_raw(value)) == value
++
++
++def test_collection_atomic_save_load_creates_parent_and_cleans_temporary_files(
++    tmp_path: Path,
++) -> None:
++    destination = tmp_path / "new" / "nested" / "renderplan-set.toml"
++    value = _set()
++    assert save_renderplan_set(destination, value) == destination
++    assert load_renderplan_set(destination) == value
++    assert list(destination.parent.glob("*.tmp")) == []
++    assert list(destination.parent.glob(".*.tmp")) == []
++
++
++def test_collection_save_replace_failure_preserves_existing_document(
++    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
++) -> None:
++    destination = tmp_path / "renderplan-set.toml"
++    destination.write_text("preserve me", encoding="utf-8")
++
++    def fail_replace(source: str | Path, target: str | Path) -> None:
++        raise OSError("simulated replace failure")
++
++    monkeypatch.setattr(collection.os, "replace", fail_replace)
++    with pytest.raises(RenderPlanSetError) as error:
++        save_renderplan_set(destination, _set())
++    assert error.value.code == "index.write_failed"
++    assert destination.read_text(encoding="utf-8") == "preserve me"
++    assert list(tmp_path.iterdir()) == [destination]
++
++
++def test_collection_profile_fingerprint_mismatch_has_stable_code() -> None:
++    with pytest.raises(RenderPlanSetError) as error:
++        replace(_set(), profile_fingerprint="f" * 12)
++    assert error.value.code == "profile.identity_mismatch"
++
++
++@pytest.mark.parametrize(
++    "field,value",
++    [
++        ("profile_id", "sha256:xyz"),
++        ("profile_id", "sha256:" + "A" * 64),
++        ("profile_id", "sha256:" + "a" * 63),
++    ],
++)
++def test_collection_rejects_malformed_profile_ids(field: str, value: str) -> None:
++    with pytest.raises(RenderPlanSetError):
++        replace(_set(), **{field: value})
++
++
++@pytest.mark.parametrize(
++    "field,value",
++    [
++        ("source_plan_id", "sha256:not-a-hash"),
++        ("render_plan_id", "sha256:" + "0" * 63),
++    ],
++)
++def test_collection_rejects_malformed_chapter_sha256_ids(field: str, value: str) -> None:
++    with pytest.raises(RenderPlanSetError):
++        replace(_set(), chapters=(replace(_chapter(), **{field: value}),))
++
++
++def test_collection_rejects_unknown_root_field() -> None:
++    raw = _raw()
++    raw["unexpected"] = True
++    with pytest.raises(RenderPlanSetError) as error:
++        renderplan_set_from_dict(raw)
++    assert error.value.code == "index.field.unknown"
++
++
++def test_collection_requires_profile_table() -> None:
++    raw = _raw()
++    del raw["profile"]
++    with pytest.raises(RenderPlanSetError) as error:
++        renderplan_set_from_dict(raw)
++    assert error.value.code == "index.field.required"
++
++
++def test_collection_rejects_unknown_profile_field() -> None:
++    raw = _raw()
++    profile = raw["profile"]
++    assert isinstance(profile, dict)
++    profile["unexpected"] = True
++    with pytest.raises(RenderPlanSetError) as error:
++        renderplan_set_from_dict(raw)
++    assert error.value.code == "index.field.unknown"
++
++
++def test_collection_requires_all_profile_fields() -> None:
++    raw = _raw()
++    profile = raw["profile"]
++    assert isinstance(profile, dict)
++    del profile["source"]
++    with pytest.raises(RenderPlanSetError) as error:
++        renderplan_set_from_dict(raw)
++    assert error.value.code == "index.field.required"
++
++
++def test_collection_rejects_unknown_chapter_field() -> None:
++    raw = _raw()
++    chapters = raw["chapter"]
++    assert isinstance(chapters, list)
++    chapters[0]["unexpected"] = True
++    with pytest.raises(RenderPlanSetError) as error:
++        renderplan_set_from_dict(raw)
++    assert error.value.code == "index.field.unknown"
++
++
++def test_collection_rejects_duplicate_chapter_ids() -> None:
++    with pytest.raises(RenderPlanSetError) as error:
++        _set(chapters=(_chapter(), _chapter(source_number=6)))
++    assert error.value.code == "index.chapter.duplicate"
++
++
++def test_collection_rejects_duplicate_source_numbers() -> None:
++    duplicate_number = _chapter(chapter_id="chapter-0006")
++    with pytest.raises(RenderPlanSetError) as error:
++        _set(chapters=(_chapter(), duplicate_number))
++    assert error.value.code == "index.chapter.source_number.duplicate"
++
++
++def test_collection_rejects_duplicate_renderplan_paths() -> None:
++    duplicate_path = _chapter(chapter_id="chapter-0006", source_number=6)
++    with pytest.raises(RenderPlanSetError) as error:
++        _set(chapters=(_chapter(), duplicate_path))
++    assert error.value.code == "index.renderplan_path.duplicate"
++
++
++@pytest.mark.parametrize("variant", ["", ".", "..", "a/b", "a\\b", "C:variant", "bad\x00id"])
++def test_collection_rejects_unsafe_variant(variant: str) -> None:
++    with pytest.raises(RenderPlanSetError):
++        _set(variant=variant)
++
++
++@pytest.mark.parametrize(
++    "chapter_id", ["", ".", "..", "../escape", "a/b", "a\\b", "C:escape", "x\x00y"]
++)
++def test_collection_rejects_unsafe_chapter_id(chapter_id: str) -> None:
++    with pytest.raises(RenderPlanSetError):
++        _set(chapters=(_chapter(chapter_id=chapter_id),))
++
++
++@pytest.mark.parametrize(
++    "renderplan",
++    [
++        "../x",
++        "/tmp/plan.toml",
++        "a/../b.toml",
++        "a/./b.toml",
++        "a\\b.toml",
++        "C:/plan.toml",
++        "//host/share/plan.toml",
++        "a\x00b.toml",
++        "a//b.toml",
++        "./plan.toml",
++    ],
++)
++def test_collection_rejects_unsafe_renderplan_paths(renderplan: str) -> None:
++    with pytest.raises(RenderPlanSetError, match="normalized relative path"):
++        _set(chapters=(_chapter(renderplan=renderplan),))
++
++
++@pytest.mark.parametrize("field", ["source", "utterplan"])
++def test_collection_accepts_normalized_upstream_parent_references(field: str) -> None:
++    chapter = _chapter(**{field: "../../workspace/nested/file.toml"})
++    assert _set(chapters=(chapter,)).chapters == (chapter,)
++
++
++@pytest.mark.parametrize(
++    "reference",
++    ["", "/absolute/file", "C:/file", "a\\b", "a/./b", "a//b", "bad\x00file"],
++)
++def test_collection_rejects_non_normalized_upstream_references(reference: str) -> None:
++    for field in ("source", "utterplan"):
++        with pytest.raises(RenderPlanSetError):
++            _set(chapters=(_chapter(**{field: reference}),))
++
++
++def test_collection_profile_snapshot_identity_succeeds_without_expected_id(
++    tmp_path: Path,
++) -> None:
++    profile = _profile()
++    path = tmp_path / "renderprofile.toml"
++    save_profile(profile, path)
++    value = _set(profile=profile)
++    assert validate_renderplan_set_profile(value, path) == profile
++
++
++def test_collection_profile_snapshot_identity_mismatch_fails(tmp_path: Path) -> None:
++    profile = _profile()
++    other_profile = _profile("different-engine")
++    path = tmp_path / "renderprofile.toml"
++    save_profile(profile, path)
++    with pytest.raises(RenderPlanSetError) as error:
++        validate_renderplan_set_profile(_set(profile=other_profile), path)
++    assert error.value.code == "profile.identity_mismatch"
++
++
++def test_collection_active_expected_profile_identity_is_checked(tmp_path: Path) -> None:
++    profile = _profile()
++    profile_id = profile.profile_id or profile.computed_id()
++    path = tmp_path / "renderprofile.toml"
++    save_profile(profile, path)
++    value = _set(profile=profile)
++    assert (
++        validate_renderplan_set_profile(value, path, expected_profile_id=profile_id) == profile
++    )
++    with pytest.raises(RenderPlanSetError) as error:
++        validate_renderplan_set_profile(value, path, expected_profile_id="sha256:" + "f" * 64)
++    assert error.value.code == "profile.identity_mismatch"
++
++
++def test_collection_loader_rejects_malformed_toml(tmp_path: Path) -> None:
++    path = tmp_path / "renderplan-set.toml"
++    path.write_text("format = [", encoding="utf-8")
++    with pytest.raises(RenderPlanSetError) as error:
++        load_renderplan_set(path)
++    assert error.value.code == "index.read_failed"
++
++
++def test_collection_load_any_dispatches_canonical_set(tmp_path: Path) -> None:
++    value = _set()
++    path = tmp_path / "renderplan-set.toml"
++    save_renderplan_set(path, value)
++    assert load_any(path) == value
++
++
++def test_collection_loader_wraps_invalid_utf8(tmp_path: Path) -> None:
++    path = tmp_path / "renderplan-set.toml"
++    path.write_bytes(b"\xff")
++    with pytest.raises(RenderPlanSetError) as error:
++        load_renderplan_set(path)
++    assert error.value.code == "index.read_failed"
+diff --git a/tests/test_contracts.py b/tests/test_contracts.py
+index a9f977e..47ded93 100644
+--- a/tests/test_contracts.py
++++ b/tests/test_contracts.py
+@@ -8,6 +8,7 @@ from typing import Any, Literal, cast
+ import pytest
+
+ from renderplan import (
++    CONTRACTS,
+     AudioItem,
+     CapacityConstraint,
+     CodecError,
+@@ -19,6 +20,8 @@ from renderplan import (
+     Producer,
+     RenderManifest,
+     RenderPlan,
++    RenderPlanSet,
++    RenderPlanSetChapter,
+     RenderProfile,
+     ReplanRequest,
+     RoleProfile,
+@@ -38,6 +41,14 @@ from renderplan import (
+     save_plan,
+     save_preflight,
+     save_profile,
++    supported_contracts,
++    validate_contained_relative_path,
++    validate_manifest_handoff,
++    validate_plan_profile,
++    validate_posix_relative_reference,
++    validate_preflight_handoff,
++    validate_safe_basename,
++    validate_set_chapter_plan,
+ )
+ from renderplan.cli import main
+ from renderplan.codec import plan_from_dict, profile_from_dict, profile_to_dict
+@@ -562,6 +573,9 @@ def test_checked_in_examples_load_and_join() -> None:
+     replan_report = load_preflight(root / "examples/chapter.replan.preflight.toml")
+     manifest_value = load_manifest(root / "examples/chapter.render-manifest.toml")
+     assert isinstance(load_any(root / "examples/af_heart.renderprofile.toml"), RenderProfile)
++    assert isinstance(load_any(root / "examples/chapter.renderplan.toml"), RenderPlan)
++    assert isinstance(load_any(root / "examples/chapter.preflight.toml"), PreflightReport)
++    assert isinstance(load_any(root / "examples/chapter.render-manifest.toml"), RenderManifest)
+     plan_value.validate_against_profile(profile_value)
+     ok_report.validate_against(plan_value)
+     replan_report.validate_against(plan_value)
+@@ -580,3 +594,151 @@ def test_cli_inspect_summaries_are_read_only_and_informative(
+     ):
+         assert main(["inspect", str(root / "examples" / filename)]) == 0
+         assert expected in capsys.readouterr().out
++
++
++def test_contract_registry_is_complete_and_immutable() -> None:
++    expected = {
++        "renderprofile": 1,
++        "renderplan": 1,
++        "renderplan-preflight": 1,
++        "render-manifest": 1,
++        "renderplan-set": 1,
++    }
++    assert dict(CONTRACTS) == expected
++    assert dict(supported_contracts()) == expected
++    assert supported_contracts() is CONTRACTS
++    with pytest.raises(TypeError):
++        CONTRACTS["unsupported"] = 1  # type: ignore[index]
++
++
++@pytest.mark.parametrize("basename", ["chapter-0001", "renderprofile.toml"])
++def test_shared_safe_basename_accepts_simple_names(basename: str) -> None:
++    assert validate_safe_basename(basename) == basename
++
++
++@pytest.mark.parametrize(
++    "basename", ["", ".", "..", "../escape", "a/b", "a\\b", "C:escape", "x\x00y"]
++)
++def test_shared_safe_basename_rejects_unsafe_names(basename: str) -> None:
++    with pytest.raises(ValidationError):
++        validate_safe_basename(basename)
++
++
++def test_shared_reference_and_contained_path_validators() -> None:
++    assert (
++        validate_posix_relative_reference("../../source/chapter.md")
++        == "../../source/chapter.md"
++    )
++    assert validate_contained_relative_path("chapter/chapter.renderplan.toml") == (
++        "chapter/chapter.renderplan.toml"
++    )
++    for invalid in (
++        "/absolute",
++        "C:/absolute",
++        "a\\b",
++        "a/./b",
++        "a//b",
++        "a/../b",
++        "bad\x00path",
++    ):
++        with pytest.raises(ValidationError):
++            validate_posix_relative_reference(invalid)
++    for invalid in ("../escape", "/absolute", "a/../b", "a\\b"):
++        with pytest.raises(ValidationError):
++            validate_contained_relative_path(invalid)
++
++
++def test_validate_plan_profile_helper_uses_model_validation() -> None:
++    profile_value = profile()
++    render_plan = plan(speech(), profile_value=profile_value)
++    validate_plan_profile(render_plan, profile_value)
++    with pytest.raises(ValidationError, match="render_profile_id"):
++        other_profile = replace(
++            profile_value,
++            roles={
++                "narrator": replace(
++                    profile_value.roles["narrator"], binding={"renderer": "other"}
++                )
++            },
++            profile_id=None,
++        ).with_identity()
++        validate_plan_profile(render_plan, other_profile)
++
++
++def test_validate_preflight_handoff_optionally_requires_success() -> None:
++    item = speech()
++    render_plan = plan(item)
++    valid = report(render_plan)
++    validate_preflight_handoff(render_plan, valid)
++    validate_preflight_handoff(render_plan, valid, require_ok=True)
++
++    rejected = report(render_plan, status="reject", checks=(check(item, "error"),))
++    validate_preflight_handoff(render_plan, rejected)
++    with pytest.raises(ValidationError, match="status must be 'ok'"):
++        validate_preflight_handoff(render_plan, rejected, require_ok=True)
++
++
++def test_validate_manifest_handoff_optionally_requires_completeness() -> None:
++    item = speech()
++    render_plan = plan(item)
++    complete = RenderManifest(plan_identity(render_plan), (artifact(item),), True)
++    validate_manifest_handoff(render_plan, complete, require_complete=True)
++
++    incomplete = RenderManifest(plan_identity(render_plan), (artifact(item),), False)
++    validate_manifest_handoff(render_plan, incomplete)
++    with pytest.raises(ValidationError, match="must be complete"):
++        validate_manifest_handoff(render_plan, incomplete, require_complete=True)
++
++
++def test_validate_set_chapter_plan_checks_all_identity_edges() -> None:
++    profile_value = profile()
++    render_plan = plan(speech(), profile_value=profile_value)
++    selected_profile_id = profile_identity(profile_value)
++    chapter = RenderPlanSetChapter(
++        id="chapter-0001",
++        source_number=1,
++        source="../../chapter.md",
++        utterplan="../../chapter.utterplan.toml",
++        source_plan_id=render_plan.source_plan_id,
++        renderplan="chapter-0001.renderplan.toml",
++        render_plan_id=plan_identity(render_plan),
++    )
++    renderplan_set = RenderPlanSet(
++        variant="narration",
++        profile_fingerprint=selected_profile_id.removeprefix("sha256:")[:12],
++        producer_version="0.5.1",
++        manifest="../../manifest.json",
++        utterplan_dir="../../utterplan",
++        profile_id=selected_profile_id,
++        snapshot="renderprofile.toml",
++        source_profile="../../narration.renderprofile.toml",
++        chapters=(chapter,),
++    )
++    validate_set_chapter_plan(renderplan_set, chapter, render_plan)
++
++    wrong_plan_id = replace(chapter, render_plan_id=OTHER_SOURCE_ID)
++    with pytest.raises(ValidationError, match="render_plan_id"):
++        validate_set_chapter_plan(
++            replace(renderplan_set, chapters=(wrong_plan_id,)), wrong_plan_id, render_plan
++        )
++
++    wrong_source_id = replace(chapter, source_plan_id=OTHER_SOURCE_ID)
++    with pytest.raises(ValidationError, match="source_plan_id"):
++        validate_set_chapter_plan(
++            replace(renderplan_set, chapters=(wrong_source_id,)), wrong_source_id, render_plan
++        )
++
++    role = profile_value.roles["narrator"]
++    changed_profile = replace(
++        profile_value,
++        roles={"narrator": replace(role, binding={"renderer": "other"})},
++        profile_id=None,
++    ).with_identity()
++    changed_id = profile_identity(changed_profile)
++    wrong_profile_set = replace(
++        renderplan_set,
++        profile_id=changed_id,
++        profile_fingerprint=changed_id.removeprefix("sha256:")[:12],
++    )
++    with pytest.raises(ValidationError, match="render_profile_id"):
++        validate_set_chapter_plan(wrong_profile_set, chapter, render_plan)
+diff --git a/tests/test_renderplan_set.py b/tests/test_renderplan_set.py
+index 84594b1..f15f174 100644
+--- a/tests/test_renderplan_set.py
++++ b/tests/test_renderplan_set.py
+@@ -33,7 +33,9 @@ def _profile(binding: str = "fixture") -> RenderProfile:
+
+
+ def _chapter(
+-    *, chapter_id: str = "chapter-0005", source_number: int = 5,
++    *,
++    chapter_id: str = "chapter-0005",
++    source_number: int = 5,
+     renderplan: str = "chapter-0005.renderplan.toml",
+ ) -> RenderPlanSetChapter:
+     return RenderPlanSetChapter(
+@@ -75,11 +77,12 @@ def test_renderplan_set_v1_roundtrip_and_profile_snapshot(tmp_path: Path) -> Non
+     profile_id = profile.profile_id or profile.computed_id()
+     assert loaded == value
+     assert loaded.chapters == (_chapter(),)
+-    assert validate_renderplan_set_profile(
+-        loaded, profile_path, expected_profile_id=profile_id
+-    ) == profile
++    assert (
++        validate_renderplan_set_profile(loaded, profile_path, expected_profile_id=profile_id)
++        == profile
++    )
+     raw = set_path.read_text(encoding="utf-8")
+-    assert 'format = "utterplan-renderplan-set"' in raw
++    assert 'format = "renderplan-set"' in raw
+     assert "version = 1" in raw
