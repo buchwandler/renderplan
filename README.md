@@ -12,6 +12,24 @@ audiocompose ──┘
 
 The applications do not depend on each other; the contract package is their only shared dependency.
 
+
+
+## Book collection orchestration
+
+[UtterPlan](https://pypi.org/project/utterplan/) now offers `render-book` as a
+book-workspace convenience over its existing per-plan projection. It writes one
+ordinary RenderPlan artifact per selected chapter under a directory keyed by the
+RenderProfile identity. Its `renderplan-set.toml` collection index and
+`render-report.toml` invocation report are UtterPlan-owned operational metadata,
+not RenderPlan schemas and not inputs to this package's codecs.
+
+Every `.renderplan.toml` file in such a collection obeys the existing shared
+RenderPlan contract and is consumed independently by
+[VoiceRender](https://pypi.org/project/voicerender/) for preflight and rendering.
+RenderPlan does not discover SSMDBook workspaces, batch chapter files, import
+UtterPlan or VoiceRender, or add collection/runtime APIs. The package boundary and
+contracts below remain unchanged.
+
 ## Contracts
 
 The package defines four TOML documents:

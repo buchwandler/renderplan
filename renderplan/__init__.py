@@ -35,9 +35,35 @@ from .model import (
     SpeechItem,
     TokenBundle,
 )
+from .set import (
+    RENDERPLAN_SET_FORMAT,
+    RENDERPLAN_SET_VERSION,
+    RenderPlanSet,
+    RenderPlanSetChapter,
+    RenderPlanSetError,
+    load_renderplan_set,
+    renderplan_set_from_dict,
+    renderplan_set_to_dict,
+    renderplan_set_to_toml,
+    save_renderplan_set,
+    validate_renderplan_set,
+    validate_renderplan_set_profile,
+)
 from .version import __version__
 
 __all__ = [
+    "RENDERPLAN_SET_FORMAT",
+    "RENDERPLAN_SET_VERSION",
+    "RenderPlanSet",
+    "RenderPlanSetChapter",
+    "RenderPlanSetError",
+    "load_renderplan_set",
+    "renderplan_set_from_dict",
+    "renderplan_set_to_dict",
+    "renderplan_set_to_toml",
+    "save_renderplan_set",
+    "validate_renderplan_set",
+    "validate_renderplan_set_profile",
     "MANIFEST_FORMAT",
     "PLAN_FORMAT",
     "PREFLIGHT_FORMAT",
