@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 try:
     tomllib: Any = importlib.import_module("tomllib")
@@ -37,6 +37,9 @@ from .model import (
     SpeechItem,
     TokenBundle,
 )
+
+if TYPE_CHECKING:
+    from .collection import RenderPlanSet
 
 
 def _mapping(value: Any, field: str) -> Mapping[str, Any]:
@@ -625,7 +628,7 @@ def _read(path: str | Path) -> Mapping[str, Any]:
     try:
         with location.open("rb") as stream:
             return _mapping(tomllib.load(stream), "document")
-    except (OSError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
         raise CodecError(f"cannot read {location}: {exc}") from exc
 
 
@@ -674,8 +677,12 @@ def save_manifest(manifest: RenderManifest, path: str | Path) -> Path:
     return _write(path, manifest_to_dict(manifest.with_identity()))
 
 
-def load_any(path: str | Path) -> RenderProfile | RenderPlan | PreflightReport | RenderManifest:
+def load_any(
+    path: str | Path,
+) -> RenderProfile | RenderPlan | PreflightReport | RenderManifest | RenderPlanSet:
     raw = _read(path)
+    from .collection import RENDERPLAN_SET_FORMAT, renderplan_set_from_dict
+
     format_name = raw.get("format")
     if format_name == PROFILE_FORMAT:
         return profile_from_dict(raw)
@@ -685,4 +692,6 @@ def load_any(path: str | Path) -> RenderProfile | RenderPlan | PreflightReport |
         return preflight_from_dict(raw)
     if format_name == MANIFEST_FORMAT:
         return manifest_from_dict(raw)
+    if format_name == RENDERPLAN_SET_FORMAT:
+        return renderplan_set_from_dict(raw)
     raise CodecError(f"unknown renderplan document format: {format_name!r}")

@@ -8,6 +8,7 @@ from typing import Any, Literal, cast
 import pytest
 
 from renderplan import (
+    CONTRACTS,
     AudioItem,
     CapacityConstraint,
     CodecError,
@@ -19,6 +20,8 @@ from renderplan import (
     Producer,
     RenderManifest,
     RenderPlan,
+    RenderPlanSet,
+    RenderPlanSetChapter,
     RenderProfile,
     ReplanRequest,
     RoleProfile,
@@ -38,6 +41,14 @@ from renderplan import (
     save_plan,
     save_preflight,
     save_profile,
+    supported_contracts,
+    validate_contained_relative_path,
+    validate_manifest_handoff,
+    validate_plan_profile,
+    validate_posix_relative_reference,
+    validate_preflight_handoff,
+    validate_safe_basename,
+    validate_set_chapter_plan,
 )
 from renderplan.cli import main
 from renderplan.codec import plan_from_dict, profile_from_dict, profile_to_dict
@@ -562,6 +573,9 @@ def test_checked_in_examples_load_and_join() -> None:
     replan_report = load_preflight(root / "examples/chapter.replan.preflight.toml")
     manifest_value = load_manifest(root / "examples/chapter.render-manifest.toml")
     assert isinstance(load_any(root / "examples/af_heart.renderprofile.toml"), RenderProfile)
+    assert isinstance(load_any(root / "examples/chapter.renderplan.toml"), RenderPlan)
+    assert isinstance(load_any(root / "examples/chapter.preflight.toml"), PreflightReport)
+    assert isinstance(load_any(root / "examples/chapter.render-manifest.toml"), RenderManifest)
     plan_value.validate_against_profile(profile_value)
     ok_report.validate_against(plan_value)
     replan_report.validate_against(plan_value)
@@ -580,3 +594,151 @@ def test_cli_inspect_summaries_are_read_only_and_informative(
     ):
         assert main(["inspect", str(root / "examples" / filename)]) == 0
         assert expected in capsys.readouterr().out
+
+
+def test_contract_registry_is_complete_and_immutable() -> None:
+    expected = {
+        "renderprofile": 1,
+        "renderplan": 1,
+        "renderplan-preflight": 1,
+        "render-manifest": 1,
+        "renderplan-set": 1,
+    }
+    assert dict(CONTRACTS) == expected
+    assert dict(supported_contracts()) == expected
+    assert supported_contracts() is CONTRACTS
+    with pytest.raises(TypeError):
+        CONTRACTS["unsupported"] = 1  # type: ignore[index]
+
+
+@pytest.mark.parametrize("basename", ["chapter-0001", "renderprofile.toml"])
+def test_shared_safe_basename_accepts_simple_names(basename: str) -> None:
+    assert validate_safe_basename(basename) == basename
+
+
+@pytest.mark.parametrize(
+    "basename", ["", ".", "..", "../escape", "a/b", "a\\b", "C:escape", "x\x00y"]
+)
+def test_shared_safe_basename_rejects_unsafe_names(basename: str) -> None:
+    with pytest.raises(ValidationError):
+        validate_safe_basename(basename)
+
+
+def test_shared_reference_and_contained_path_validators() -> None:
+    assert (
+        validate_posix_relative_reference("../../source/chapter.md")
+        == "../../source/chapter.md"
+    )
+    assert validate_contained_relative_path("chapter/chapter.renderplan.toml") == (
+        "chapter/chapter.renderplan.toml"
+    )
+    for invalid in (
+        "/absolute",
+        "C:/absolute",
+        "a\\b",
+        "a/./b",
+        "a//b",
+        "a/../b",
+        "bad\x00path",
+    ):
+        with pytest.raises(ValidationError):
+            validate_posix_relative_reference(invalid)
+    for invalid in ("../escape", "/absolute", "a/../b", "a\\b"):
+        with pytest.raises(ValidationError):
+            validate_contained_relative_path(invalid)
+
+
+def test_validate_plan_profile_helper_uses_model_validation() -> None:
+    profile_value = profile()
+    render_plan = plan(speech(), profile_value=profile_value)
+    validate_plan_profile(render_plan, profile_value)
+    with pytest.raises(ValidationError, match="render_profile_id"):
+        other_profile = replace(
+            profile_value,
+            roles={
+                "narrator": replace(
+                    profile_value.roles["narrator"], binding={"renderer": "other"}
+                )
+            },
+            profile_id=None,
+        ).with_identity()
+        validate_plan_profile(render_plan, other_profile)
+
+
+def test_validate_preflight_handoff_optionally_requires_success() -> None:
+    item = speech()
+    render_plan = plan(item)
+    valid = report(render_plan)
+    validate_preflight_handoff(render_plan, valid)
+    validate_preflight_handoff(render_plan, valid, require_ok=True)
+
+    rejected = report(render_plan, status="reject", checks=(check(item, "error"),))
+    validate_preflight_handoff(render_plan, rejected)
+    with pytest.raises(ValidationError, match="status must be 'ok'"):
+        validate_preflight_handoff(render_plan, rejected, require_ok=True)
+
+
+def test_validate_manifest_handoff_optionally_requires_completeness() -> None:
+    item = speech()
+    render_plan = plan(item)
+    complete = RenderManifest(plan_identity(render_plan), (artifact(item),), True)
+    validate_manifest_handoff(render_plan, complete, require_complete=True)
+
+    incomplete = RenderManifest(plan_identity(render_plan), (artifact(item),), False)
+    validate_manifest_handoff(render_plan, incomplete)
+    with pytest.raises(ValidationError, match="must be complete"):
+        validate_manifest_handoff(render_plan, incomplete, require_complete=True)
+
+
+def test_validate_set_chapter_plan_checks_all_identity_edges() -> None:
+    profile_value = profile()
+    render_plan = plan(speech(), profile_value=profile_value)
+    selected_profile_id = profile_identity(profile_value)
+    chapter = RenderPlanSetChapter(
+        id="chapter-0001",
+        source_number=1,
+        source="../../chapter.md",
+        utterplan="../../chapter.utterplan.toml",
+        source_plan_id=render_plan.source_plan_id,
+        renderplan="chapter-0001.renderplan.toml",
+        render_plan_id=plan_identity(render_plan),
+    )
+    renderplan_set = RenderPlanSet(
+        variant="narration",
+        profile_fingerprint=selected_profile_id.removeprefix("sha256:")[:12],
+        producer_version="0.5.1",
+        manifest="../../manifest.json",
+        utterplan_dir="../../utterplan",
+        profile_id=selected_profile_id,
+        snapshot="renderprofile.toml",
+        source_profile="../../narration.renderprofile.toml",
+        chapters=(chapter,),
+    )
+    validate_set_chapter_plan(renderplan_set, chapter, render_plan)
+
+    wrong_plan_id = replace(chapter, render_plan_id=OTHER_SOURCE_ID)
+    with pytest.raises(ValidationError, match="render_plan_id"):
+        validate_set_chapter_plan(
+            replace(renderplan_set, chapters=(wrong_plan_id,)), wrong_plan_id, render_plan
+        )
+
+    wrong_source_id = replace(chapter, source_plan_id=OTHER_SOURCE_ID)
+    with pytest.raises(ValidationError, match="source_plan_id"):
+        validate_set_chapter_plan(
+            replace(renderplan_set, chapters=(wrong_source_id,)), wrong_source_id, render_plan
+        )
+
+    role = profile_value.roles["narrator"]
+    changed_profile = replace(
+        profile_value,
+        roles={"narrator": replace(role, binding={"renderer": "other"})},
+        profile_id=None,
+    ).with_identity()
+    changed_id = profile_identity(changed_profile)
+    wrong_profile_set = replace(
+        renderplan_set,
+        profile_id=changed_id,
+        profile_fingerprint=changed_id.removeprefix("sha256:")[:12],
+    )
+    with pytest.raises(ValidationError, match="render_profile_id"):
+        validate_set_chapter_plan(wrong_profile_set, chapter, render_plan)

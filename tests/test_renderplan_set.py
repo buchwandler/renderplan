@@ -33,7 +33,9 @@ def _profile(binding: str = "fixture") -> RenderProfile:
 
 
 def _chapter(
-    *, chapter_id: str = "chapter-0005", source_number: int = 5,
+    *,
+    chapter_id: str = "chapter-0005",
+    source_number: int = 5,
     renderplan: str = "chapter-0005.renderplan.toml",
 ) -> RenderPlanSetChapter:
     return RenderPlanSetChapter(
@@ -75,11 +77,12 @@ def test_renderplan_set_v1_roundtrip_and_profile_snapshot(tmp_path: Path) -> Non
     profile_id = profile.profile_id or profile.computed_id()
     assert loaded == value
     assert loaded.chapters == (_chapter(),)
-    assert validate_renderplan_set_profile(
-        loaded, profile_path, expected_profile_id=profile_id
-    ) == profile
+    assert (
+        validate_renderplan_set_profile(loaded, profile_path, expected_profile_id=profile_id)
+        == profile
+    )
     raw = set_path.read_text(encoding="utf-8")
-    assert 'format = "utterplan-renderplan-set"' in raw
+    assert 'format = "renderplan-set"' in raw
     assert "version = 1" in raw
 
 

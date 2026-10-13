@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "renderplan"
-description = "Engine-neutral render profile, render plan, preflight, and render manifest contracts for speech pipelines."
+description = "Engine-neutral render profile, plan, preflight, manifest, and collection contracts for speech pipelines."
 readme = "README.md"
 requires-python = ">=3.10"
 dynamic = ["version"]

@@ -12,32 +12,29 @@ audiocompose ──┘
 
 The applications do not depend on each other; the contract package is their only shared dependency.
 
+## RenderPlan-set collection contract
 
+RenderPlan owns the immutable `renderplan-set` v1 collection/index contract shared by the
+speech pipeline. UtterPlan's `render-book` operation produces the index alongside its
+per-chapter RenderPlans; UtterPlan continues to own book-workspace discovery,
+segmentation, and its invocation report. The set contract records chapter ordering,
+profile identity, and normalized artifact references without performing orchestration.
 
-## Book collection orchestration
-
-[UtterPlan](https://pypi.org/project/utterplan/) now offers `render-book` as a
-book-workspace convenience over its existing per-plan projection. It writes one
-ordinary RenderPlan artifact per selected chapter under a directory keyed by the
-RenderProfile identity. Its `renderplan-set.toml` collection index and
-`render-report.toml` invocation report are UtterPlan-owned operational metadata,
-not RenderPlan schemas and not inputs to this package's codecs.
-
-Every `.renderplan.toml` file in such a collection obeys the existing shared
-RenderPlan contract and is consumed independently by
-[VoiceRender](https://pypi.org/project/voicerender/) for preflight and rendering.
-RenderPlan does not discover SSMDBook workspaces, batch chapter files, import
-UtterPlan or VoiceRender, or add collection/runtime APIs. The package boundary and
-contracts below remain unchanged.
+RenderPlan provides `RenderPlanSet` and `RenderPlanSetChapter`, strict TOML codecs,
+profile snapshot identity validation, and `load_any()` dispatch for `renderplan-set`.
+Filesystem containment and symlink checks remain the consumers' responsibility.
+RenderPlan does not discover SSMDBook workspaces, batch chapter files, import UtterPlan
+or VoiceRender, or add execution/runtime orchestration.
 
 ## Contracts
 
-The package defines four TOML documents:
+The package defines five TOML contract documents:
 
 1. `renderprofile.toml` — seeded by VoiceRender and user-owned. It contains opaque, self-contained renderer bindings, portable requirements, optional capacity descriptions, split/fallback policy, and explicit pause durations. Shared pause modes are `manual` and `none`; orchestration pass limits do not belong in this contract.
 2. `renderplan.toml` — produced by UtterPlan. Its ordered flow is the exact serial execution contract: numbered speech requests, exact `NNNNNN.wav` names, generic pauses, audio items, controls, tokens, source provenance, and role bindings copied from the profile.
 3. `renderplan-preflight.toml` — produced by VoiceRender for one exact RenderPlan. It has status `ok`, `replan`, or `reject` and refers to speech occurrences by `(segment_number, segment_id)`.
 4. `render-manifest.toml` — produced by VoiceRender. It binds WAV metadata to exact `(segment_number, segment_id)` plan occurrences. A complete manifest contains exactly every plan speech occurrence; an incomplete one may contain only occurrences from that plan.
+5. `renderplan-set.toml` — produced by UtterPlan in `render-book` workflows and defined by RenderPlan. It records a safe variant, profile identity/snapshot references, upstream workspace references, and ordered chapter references with source-plan and RenderPlan identities.
 
 Consumers can use the shared joins instead of implementing their own parsers:
 
@@ -45,6 +42,10 @@ Consumers can use the shared joins instead of implementing their own parsers:
 plan.validate_against_profile(profile)
 report.validate_against(plan)
 manifest.validate_against(plan)
+validate_plan_profile(plan, profile)
+validate_preflight_handoff(plan, report, require_ok=True)
+validate_manifest_handoff(plan, manifest, require_complete=True)
+validate_set_chapter_plan(renderplan_set, chapter, plan)
 ```
 
 These are portable contract checks only; they do not resolve engines, inspect WAV files, or orchestrate a pipeline.
