@@ -28,6 +28,43 @@ SOURCE_PLAN_ID = "sha256:" + "b" * 64
 RENDER_PLAN_ID = "sha256:" + "c" * 64
 
 
+
+def test_renderplan_set_contract_is_exported_from_package_root() -> None:
+    from renderplan import (
+        RENDERPLAN_SET_FORMAT,
+        RENDERPLAN_SET_VERSION,
+        RenderPlanSet,
+        RenderPlanSetChapter,
+        RenderPlanSetError,
+        load_renderplan_set,
+        renderplan_set_from_dict,
+        renderplan_set_to_dict,
+        renderplan_set_to_toml,
+        save_renderplan_set,
+        validate_renderplan_set,
+        validate_renderplan_set_profile,
+        validate_set_chapter_plan,
+    )
+
+    assert RENDERPLAN_SET_FORMAT == "renderplan-set"
+    assert RENDERPLAN_SET_VERSION == 1
+    assert all(
+        callable(symbol)
+        for symbol in (
+            RenderPlanSet,
+            RenderPlanSetChapter,
+            RenderPlanSetError,
+            load_renderplan_set,
+            renderplan_set_from_dict,
+            renderplan_set_to_dict,
+            renderplan_set_to_toml,
+            save_renderplan_set,
+            validate_renderplan_set,
+            validate_renderplan_set_profile,
+            validate_set_chapter_plan,
+        )
+    )
+
 def _profile(binding: str = "fixture") -> RenderProfile:
     return RenderProfile(
         roles={"narrator": RoleProfile(language="en-US", binding={"engine": binding})},

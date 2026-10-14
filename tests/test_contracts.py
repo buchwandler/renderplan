@@ -742,3 +742,10 @@ def test_validate_set_chapter_plan_checks_all_identity_edges() -> None:
     )
     with pytest.raises(ValidationError, match="render_profile_id"):
         validate_set_chapter_plan(wrong_profile_set, chapter, render_plan)
+    forged_chapter = replace(chapter, renderplan="other.renderplan.toml")
+    with pytest.raises(ValidationError, match="not a member"):
+        validate_set_chapter_plan(renderplan_set, forged_chapter, render_plan)
+
+    unpersisted_plan = replace(render_plan, plan_id=None)
+    with pytest.raises(ValidationError, match="render_plan_id"):
+        validate_set_chapter_plan(renderplan_set, chapter, unpersisted_plan)

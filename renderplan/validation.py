@@ -37,16 +37,17 @@ def validate_set_chapter_plan(
 ) -> None:
     """Validate a chapter's plan and profile identities against its containing set."""
     validate_renderplan_set(renderplan_set)
-    if chapter not in renderplan_set.chapters:
-        raise ValidationError("chapter is not a member of the RenderPlan set")
-    actual_plan_id = plan.plan_id or plan.computed_id()
-    if chapter.render_plan_id != actual_plan_id:
+    member = next(
+        (candidate for candidate in renderplan_set.chapters if candidate.id == chapter.id), None
+    )
+    if member is None or member != chapter:
+        raise ValidationError("chapter is not a member of the RenderPlan set by ID and identity")
+    if chapter.render_plan_id != plan.plan_id:
         raise ValidationError("chapter render_plan_id does not match the RenderPlan")
     if chapter.source_plan_id != plan.source_plan_id:
         raise ValidationError("chapter source_plan_id does not match the RenderPlan")
     if plan.render_profile_id != renderplan_set.profile_id:
         raise ValidationError("RenderPlan render_profile_id does not match the RenderPlan set")
-
 
 __all__ = [
     "validate_manifest_handoff",

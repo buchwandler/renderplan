@@ -26,7 +26,7 @@ _PROFILE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _FINGERPRINT_RE = re.compile(r"^[0-9a-f]{12}$")
 
 
-class RenderPlanSetError(RenderPlanError):
+class RenderPlanSetError(RenderPlanError, ValueError):
     """Invalid, unreadable, or unwritable RenderPlan-set metadata."""
 
     def __init__(self, message: str, *, code: str = "index.invalid") -> None:
