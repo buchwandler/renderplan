@@ -28,7 +28,6 @@ SOURCE_PLAN_ID = "sha256:" + "b" * 64
 RENDER_PLAN_ID = "sha256:" + "c" * 64
 
 
-
 def test_renderplan_set_contract_is_exported_from_package_root() -> None:
     from renderplan import (
         RENDERPLAN_SET_FORMAT,
@@ -64,6 +63,7 @@ def test_renderplan_set_contract_is_exported_from_package_root() -> None:
             validate_set_chapter_plan,
         )
     )
+
 
 def _profile(binding: str = "fixture") -> RenderProfile:
     return RenderProfile(

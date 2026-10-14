@@ -1,0 +1,123 @@
+ renderplan/collection.py     |  2 +-
+ renderplan/validation.py     | 11 ++++++-----
+ tests/test_collection.py     | 37 +++++++++++++++++++++++++++++++++++++
+ tests/test_contracts.py      |  7 +++++++
+ tests/test_renderplan_set.py |  1 +
+ 5 files changed, 52 insertions(+), 6 deletions(-)
+
+diff --git a/renderplan/collection.py b/renderplan/collection.py
+index 5c0c795..0514799 100644
+--- a/renderplan/collection.py
++++ b/renderplan/collection.py
+@@ -26,7 +26,7 @@ _PROFILE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+ _FINGERPRINT_RE = re.compile(r"^[0-9a-f]{12}$")
+
+
+-class RenderPlanSetError(RenderPlanError):
++class RenderPlanSetError(RenderPlanError, ValueError):
+     """Invalid, unreadable, or unwritable RenderPlan-set metadata."""
+
+     def __init__(self, message: str, *, code: str = "index.invalid") -> None:
+diff --git a/renderplan/validation.py b/renderplan/validation.py
+index e60e791..2336436 100644
+--- a/renderplan/validation.py
++++ b/renderplan/validation.py
+@@ -37,17 +37,18 @@ def validate_set_chapter_plan(
+ ) -> None:
+     """Validate a chapter's plan and profile identities against its containing set."""
+     validate_renderplan_set(renderplan_set)
+-    if chapter not in renderplan_set.chapters:
+-        raise ValidationError("chapter is not a member of the RenderPlan set")
+-    actual_plan_id = plan.plan_id or plan.computed_id()
+-    if chapter.render_plan_id != actual_plan_id:
++    member = next(
++        (candidate for candidate in renderplan_set.chapters if candidate.id == chapter.id), None
++    )
++    if member is None or member != chapter:
++        raise ValidationError("chapter is not a member of the RenderPlan set by ID and identity")
++    if chapter.render_plan_id != plan.plan_id:
+         raise ValidationError("chapter render_plan_id does not match the RenderPlan")
+     if chapter.source_plan_id != plan.source_plan_id:
+         raise ValidationError("chapter source_plan_id does not match the RenderPlan")
+     if plan.render_profile_id != renderplan_set.profile_id:
+         raise ValidationError("RenderPlan render_profile_id does not match the RenderPlan set")
+
+-
+ __all__ = [
+     "validate_manifest_handoff",
+     "validate_plan_profile",
+diff --git a/tests/test_collection.py b/tests/test_collection.py
+index 2b428b8..13c3123 100644
+--- a/tests/test_collection.py
++++ b/tests/test_collection.py
+@@ -28,6 +28,43 @@ SOURCE_PLAN_ID = "sha256:" + "b" * 64
+ RENDER_PLAN_ID = "sha256:" + "c" * 64
+
+
++
++def test_renderplan_set_contract_is_exported_from_package_root() -> None:
++    from renderplan import (
++        RENDERPLAN_SET_FORMAT,
++        RENDERPLAN_SET_VERSION,
++        RenderPlanSet,
++        RenderPlanSetChapter,
++        RenderPlanSetError,
++        load_renderplan_set,
++        renderplan_set_from_dict,
++        renderplan_set_to_dict,
++        renderplan_set_to_toml,
++        save_renderplan_set,
++        validate_renderplan_set,
++        validate_renderplan_set_profile,
++        validate_set_chapter_plan,
++    )
++
++    assert RENDERPLAN_SET_FORMAT == "renderplan-set"
++    assert RENDERPLAN_SET_VERSION == 1
++    assert all(
++        callable(symbol)
++        for symbol in (
++            RenderPlanSet,
++            RenderPlanSetChapter,
++            RenderPlanSetError,
++            load_renderplan_set,
++            renderplan_set_from_dict,
++            renderplan_set_to_dict,
++            renderplan_set_to_toml,
++            save_renderplan_set,
++            validate_renderplan_set,
++            validate_renderplan_set_profile,
++            validate_set_chapter_plan,
++        )
++    )
++
+ def _profile(binding: str = "fixture") -> RenderProfile:
+     return RenderProfile(
+         roles={"narrator": RoleProfile(language="en-US", binding={"engine": binding})},
+diff --git a/tests/test_contracts.py b/tests/test_contracts.py
+index 47ded93..3119425 100644
+--- a/tests/test_contracts.py
++++ b/tests/test_contracts.py
+@@ -742,3 +742,10 @@ def test_validate_set_chapter_plan_checks_all_identity_edges() -> None:
+     )
+     with pytest.raises(ValidationError, match="render_profile_id"):
+         validate_set_chapter_plan(wrong_profile_set, chapter, render_plan)
++    forged_chapter = replace(chapter, renderplan="other.renderplan.toml")
++    with pytest.raises(ValidationError, match="not a member"):
++        validate_set_chapter_plan(renderplan_set, forged_chapter, render_plan)
++
++    unpersisted_plan = replace(render_plan, plan_id=None)
++    with pytest.raises(ValidationError, match="render_plan_id"):
++        validate_set_chapter_plan(renderplan_set, chapter, unpersisted_plan)
+diff --git a/tests/test_renderplan_set.py b/tests/test_renderplan_set.py
+index f15f174..8bfaca1 100644
+--- a/tests/test_renderplan_set.py
++++ b/tests/test_renderplan_set.py
+@@ -132,6 +132,7 @@ def test_renderplan_set_error_is_a_renderplan_error() -> None:
+     with pytest.raises(RenderPlanError):
+         replace(_set(), profile_fingerprint="bad")
+
++    assert issubclass(RenderPlanSetError, ValueError)
+
+ def test_renderplan_set_profile_validation_distinguishes_identity_failures(
+     tmp_path: Path,

@@ -1,0 +1,29 @@
+{
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "additions": 52,
+      "deletions": 6,
+      "patch_file": "f88173e.patch",
+      "patch_sha256": "1d80d2bc3ed754a0c39fbab6b64f5a0e5f6f36944c6eace903ef0a48d1e8a85c",
+      "paths": [
+        "renderplan/collection.py",
+        "renderplan/validation.py",
+        "tests/test_collection.py",
+        "tests/test_contracts.py",
+        "tests/test_renderplan_set.py"
+      ],
+      "sha": "f88173e8514ac2f095efc9793f35bddd7d0b5937",
+      "short_sha": "f88173e",
+      "source_ref": "git:f88173e8514ac2f095efc9793f35bddd7d0b5937"
+    }
+  ],
+  "git_base_ref": "2aab3cc46e452bb6b7fad46999d05d47d6e466a3",
+  "git_base_sha": "2aab3cc46e452bb6b7fad46999d05d47d6e466a3",
+  "git_head_ref": "f88173e8514ac2f095efc9793f35bddd7d0b5937",
+  "git_head_sha": "f88173e8514ac2f095efc9793f35bddd7d0b5937",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "v0.1.2",
+  "schema_version": 1
+}

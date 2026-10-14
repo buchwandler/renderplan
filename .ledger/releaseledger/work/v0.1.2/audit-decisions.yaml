@@ -1,0 +1,20 @@
+rows:
+  - sha: f88173e8514ac2f095efc9793f35bddd7d0b5937
+    inspected: true
+    inspected_paths:
+      - renderplan/collection.py
+      - renderplan/validation.py
+      - tests/test_collection.py
+      - tests/test_contracts.py
+      - tests/test_renderplan_set.py
+    observed_behavior: >-
+      RenderPlan-set validation now matches chapters by ID and full identity,
+      requires persisted plan identities, and exposes the collection contract
+      from the package root; RenderPlanSetError also remains compatible with
+      ValueError callers.
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: Reviewed the implementation changes and their focused regression tests.
+    stale: false

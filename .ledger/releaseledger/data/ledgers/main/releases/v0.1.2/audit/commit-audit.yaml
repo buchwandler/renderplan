@@ -1,0 +1,44 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: v0.1.2
+git_base_ref: v0.1.1
+git_base_sha: 2aab3cc46e452bb6b7fad46999d05d47d6e466a3
+git_head_ref: HEAD
+git_head_sha: f88173e8514ac2f095efc9793f35bddd7d0b5937
+git_range: 2aab3cc46e452bb6b7fad46999d05d47d6e466a3..f88173e8514ac2f095efc9793f35bddd7d0b5937
+commit_count: 1
+rows:
+  - sha: f88173e8514ac2f095efc9793f35bddd7d0b5937
+    source_ref: git:f88173e8514ac2f095efc9793f35bddd7d0b5937
+    short_sha: f88173e
+    changed_paths:
+      - renderplan/collection.py
+      - renderplan/validation.py
+      - tests/test_collection.py
+      - tests/test_contracts.py
+      - tests/test_renderplan_set.py
+    stats:
+      files_changed: 5
+      insertions: 52
+      deletions: 6
+    inspected: true
+    inspected_paths:
+      - renderplan/collection.py
+      - renderplan/validation.py
+      - tests/test_collection.py
+      - tests/test_contracts.py
+      - tests/test_renderplan_set.py
+    observed_behavior:
+      RenderPlan-set validation now matches chapters by ID and full
+      identity, requires persisted plan identities, and exposes the collection contract
+      from the package root; RenderPlanSetError also remains compatible with ValueError
+      callers.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: small improvements"
+    target_entry_id: entry-0001
+    notes: Reviewed the implementation changes and their focused regression tests.

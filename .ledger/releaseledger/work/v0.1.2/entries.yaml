@@ -1,0 +1,28 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: v0.1.2
+git_base_ref: 2aab3cc46e452bb6b7fad46999d05d47d6e466a3
+git_base_sha: 2aab3cc46e452bb6b7fad46999d05d47d6e466a3
+git_head_ref: f88173e8514ac2f095efc9793f35bddd7d0b5937
+git_head_sha: f88173e8514ac2f095efc9793f35bddd7d0b5937
+include_merges: nontrivial
+entries:
+  - kind: changed
+    summary: Changed RenderPlan-set identity validation and exported the collection contract
+    status: accepted
+    source_refs:
+      - git:f88173e8514ac2f095efc9793f35bddd7d0b5937
+    paths:
+      - renderplan/collection.py
+      - renderplan/validation.py
+      - tests/test_collection.py
+      - tests/test_contracts.py
+      - tests/test_renderplan_set.py
+    sources:
+      - git:f88173e8514ac2f095efc9793f35bddd7d0b5937
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"

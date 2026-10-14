@@ -134,6 +134,7 @@ def test_renderplan_set_error_is_a_renderplan_error() -> None:
 
     assert issubclass(RenderPlanSetError, ValueError)
 
+
 def test_renderplan_set_profile_validation_distinguishes_identity_failures(
     tmp_path: Path,
 ) -> None:
