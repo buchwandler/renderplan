@@ -1,0 +1,26 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: v0.1.3
+git_base_ref: c2981a645889c974f2f7dc8b93ee8c3828655d9d
+git_base_sha: c2981a645889c974f2f7dc8b93ee8c3828655d9d
+git_head_ref: 8c9c93738b8e26a66b25b0cbefc04c070f1ec227
+git_head_sha: 8c9c93738b8e26a66b25b0cbefc04c070f1ec227
+include_merges: nontrivial
+entries:
+  - kind: added
+    summary: "Added profile loading for re-identification while preserving validation of other profile data"
+    status: accepted
+    source_refs:
+      - git:8c9c93738b8e26a66b25b0cbefc04c070f1ec227
+    paths:
+      - renderplan/__init__.py
+      - renderplan/codec.py
+      - tests/test_profile_reidentification.py
+    sources:
+      - git:8c9c93738b8e26a66b25b0cbefc04c070f1ec227
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"

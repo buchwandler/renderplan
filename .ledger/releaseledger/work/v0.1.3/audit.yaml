@@ -1,0 +1,31 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 1
+release_version: v0.1.3
+git_base_ref: v0.1.2
+git_base_sha: c2981a645889c974f2f7dc8b93ee8c3828655d9d
+git_head_ref: HEAD
+git_head_sha: 8c9c93738b8e26a66b25b0cbefc04c070f1ec227
+git_range: c2981a645889c974f2f7dc8b93ee8c3828655d9d..8c9c93738b8e26a66b25b0cbefc04c070f1ec227
+commit_count: 1
+rows:
+  - sha: 8c9c93738b8e26a66b25b0cbefc04c070f1ec227
+    source_ref: git:8c9c93738b8e26a66b25b0cbefc04c070f1ec227
+    short_sha: 8c9c937
+    changed_paths:
+      - renderplan/__init__.py
+      - renderplan/codec.py
+      - tests/test_profile_reidentification.py
+    stats:
+      files_changed: 3
+      insertions: 49
+      deletions: 0
+    inspected: false
+    inspected_paths: []
+    observed_behavior: ""
+    public_impact: unknown
+    decision: needs_review
+    stale: false
+    evidence_subject: "feat: recreate profile_id"

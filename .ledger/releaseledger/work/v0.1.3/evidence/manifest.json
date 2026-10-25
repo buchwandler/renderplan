@@ -1,0 +1,27 @@
+{
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "additions": 49,
+      "deletions": 0,
+      "patch_file": "8c9c937.patch",
+      "patch_sha256": "d7874770d8f33fb0aee2f49623e34d18ca931becbe00f18830d0c5c51dcb4bc8",
+      "paths": [
+        "renderplan/__init__.py",
+        "renderplan/codec.py",
+        "tests/test_profile_reidentification.py"
+      ],
+      "sha": "8c9c93738b8e26a66b25b0cbefc04c070f1ec227",
+      "short_sha": "8c9c937",
+      "source_ref": "git:8c9c93738b8e26a66b25b0cbefc04c070f1ec227"
+    }
+  ],
+  "git_base_ref": "c2981a645889c974f2f7dc8b93ee8c3828655d9d",
+  "git_base_sha": "c2981a645889c974f2f7dc8b93ee8c3828655d9d",
+  "git_head_ref": "8c9c93738b8e26a66b25b0cbefc04c070f1ec227",
+  "git_head_sha": "8c9c93738b8e26a66b25b0cbefc04c070f1ec227",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "v0.1.3",
+  "schema_version": 1
+}

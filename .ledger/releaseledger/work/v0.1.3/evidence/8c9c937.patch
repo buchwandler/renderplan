@@ -1,0 +1,89 @@
+ renderplan/__init__.py                 |  2 ++
+ renderplan/codec.py                    |  7 ++++++
+ tests/test_profile_reidentification.py | 40 ++++++++++++++++++++++++++++++++++
+ 3 files changed, 49 insertions(+)
+
+diff --git a/renderplan/__init__.py b/renderplan/__init__.py
+index bfc7f94..fb1ae5e 100644
+--- a/renderplan/__init__.py
++++ b/renderplan/__init__.py
+@@ -4,6 +4,7 @@ from .codec import (
+     load_plan,
+     load_preflight,
+     load_profile,
++    load_profile_for_reidentification,
+     save_manifest,
+     save_plan,
+     save_preflight,
+@@ -102,6 +103,7 @@ __all__ = [
+     "load_plan",
+     "load_preflight",
+     "load_profile",
++    "load_profile_for_reidentification",
+     "load_renderplan_set",
+     "renderplan_set_from_dict",
+     "renderplan_set_to_dict",
+diff --git a/renderplan/codec.py b/renderplan/codec.py
+index 060982a..b445a1f 100644
+--- a/renderplan/codec.py
++++ b/renderplan/codec.py
+@@ -649,6 +649,13 @@ def load_profile(path: str | Path) -> RenderProfile:
+     return profile_from_dict(_read(path))
+
+
++def load_profile_for_reidentification(path: str | Path) -> RenderProfile:
++    """Load and validate a profile while ignoring only its stored identity."""
++    raw = dict(_read(path))
++    raw["profile_id"] = None
++    return profile_from_dict(raw)
++
++
+ def save_profile(profile: RenderProfile, path: str | Path) -> Path:
+     return _write(path, profile_to_dict(profile.with_identity()))
+
+diff --git a/tests/test_profile_reidentification.py b/tests/test_profile_reidentification.py
+new file mode 100644
+index 0000000..eb45a35
+--- /dev/null
++++ b/tests/test_profile_reidentification.py
+@@ -0,0 +1,40 @@
++from __future__ import annotations
++
++from pathlib import Path
++
++import pytest
++
++from renderplan import (
++    CodecError,
++    ValidationError,
++    load_profile,
++    load_profile_for_reidentification,
++)
++
++
++def test_reidentification_loader_ignores_only_stored_profile_id(tmp_path: Path) -> None:
++    source = Path(__file__).parents[1] / "examples/af_heart.renderprofile.toml"
++    content = source.read_text(encoding="utf-8")
++
++    # Replace the complete stored digest without relying on its current value.
++    lines = content.splitlines()
++    id_line = next(index for index, line in enumerate(lines) if line.startswith("profile_id ="))
++    lines[id_line] = 'profile_id = "sha256:' + "0" * 64 + '"'
++    path = tmp_path / "stale.renderprofile.toml"
++    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
++
++    with pytest.raises(ValidationError):
++        load_profile(path)
++
++    profile = load_profile_for_reidentification(path)
++    assert profile.profile_id is None
++    repaired = profile.with_identity()
++    assert repaired.profile_id == repaired.computed_id()
++
++
++def test_reidentification_loader_still_rejects_malformed_toml(tmp_path: Path) -> None:
++    path = tmp_path / "invalid.renderprofile.toml"
++    path.write_text("not = [valid", encoding="utf-8")
++
++    with pytest.raises(CodecError):
++        load_profile_for_reidentification(path)

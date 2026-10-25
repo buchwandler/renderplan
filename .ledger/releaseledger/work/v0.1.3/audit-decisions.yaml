@@ -1,0 +1,14 @@
+rows:
+  - sha: 8c9c93738b8e26a66b25b0cbefc04c070f1ec227
+    inspected: true
+    inspected_paths:
+      - renderplan/__init__.py
+      - renderplan/codec.py
+      - tests/test_profile_reidentification.py
+    observed_behavior: "Added a public loader that clears only a stored profile identity before validation, allowing re-identification while preserving validation of the remaining profile data; added coverage for stale identities and malformed TOML."
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: ""
+    stale: false
