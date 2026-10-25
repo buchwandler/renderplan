@@ -649,6 +649,13 @@ def load_profile(path: str | Path) -> RenderProfile:
     return profile_from_dict(_read(path))
 
 
+def load_profile_for_reidentification(path: str | Path) -> RenderProfile:
+    """Load and validate a profile while ignoring only its stored identity."""
+    raw = dict(_read(path))
+    raw["profile_id"] = None
+    return profile_from_dict(raw)
+
+
 def save_profile(profile: RenderProfile, path: str | Path) -> Path:
     return _write(path, profile_to_dict(profile.with_identity()))
 
