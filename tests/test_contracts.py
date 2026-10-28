@@ -9,6 +9,11 @@ import pytest
 
 from renderplan import (
     CONTRACTS,
+    CONTROL_EMPHASIS,
+    CONTROL_PRONUNCIATION,
+    CONTROL_PROSODY,
+    CONTROL_SAY_AS,
+    SAY_AS_CHARACTERS,
     AudioItem,
     CapacityConstraint,
     CodecError,
@@ -216,6 +221,83 @@ def test_renderplan_roundtrip_with_controls_and_generic_binding(tmp_path: Path) 
     assert loaded.speech[0].wav == "000001.wav"
     assert loaded.speech[0].binding == generic_binding
     assert loaded.speech[0].controls[0].params == {"level": "moderate"}
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {},
+        {"format": "letters"},
+        {"interpret_as": ""},
+        {"interpret_as": 1},
+        {"interpret_as": "characters", "format": ""},
+        {"interpret_as": "characters", "detail": False},
+        {"interpret_as": "characters", "detail": ""},
+        {"interpret_as": "characters", "unexpected": "value"},
+    ],
+)
+def test_say_as_control_rejects_invalid_standard_parameters(params: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError, match="say_as"):
+        SpeechControl(0, 5, "say_as", params)
+
+
+def test_say_as_standard_constants_and_future_interpretations() -> None:
+    assert CONTROL_SAY_AS == "say_as"
+    assert CONTROL_EMPHASIS == "emphasis"
+    assert CONTROL_PRONUNCIATION == "pronunciation"
+    assert CONTROL_PROSODY == "prosody"
+    assert SAY_AS_CHARACTERS == "characters"
+    control = SpeechControl(
+        0,
+        5,
+        CONTROL_SAY_AS,
+        {"interpret_as": "date", "format": "dd.mm.yyyy", "detail": "1"},
+    )
+    assert control.params["interpret_as"] == "date"
+
+
+def test_say_as_characters_roundtrip_preserves_sentence_text_and_flow(tmp_path: Path) -> None:
+    text = "Because someone called A R T finally."
+    start = text.index("A R T")
+    control = SpeechControl(
+        start,
+        start + len("A R T"),
+        CONTROL_SAY_AS,
+        {"interpret_as": SAY_AS_CHARACTERS},
+    )
+    value = plan(speech(text=text, controls=(control,)))
+    path = tmp_path / "say-as.renderplan.toml"
+    save_plan(value, path)
+    loaded = load_plan(path)
+
+    assert len(loaded.flow) == 1
+    assert len(loaded.speech) == 1
+    restored = loaded.speech[0]
+    restored_control = restored.controls[0]
+    assert restored.text == text
+    assert restored.text[restored_control.start : restored_control.end] == "A R T"
+    assert restored_control.name == CONTROL_SAY_AS
+    assert restored_control.params["interpret_as"] == SAY_AS_CHARACTERS
+    assert restored.planning_level == "sentence"
+    assert not any(isinstance(item, PauseItem) for item in loaded.flow)
+    assert "A- R- T" not in path.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("text", "possessive"),
+    [
+        ("A R T's house is nice.", "'s"),
+        ("A R T’s house is nice.", "’s"),
+    ],
+)
+def test_say_as_control_excludes_possessive_suffix(text: str, possessive: str) -> None:
+    start = text.index("A R T")
+    end = start + len("A R T")
+    control = SpeechControl(start, end, CONTROL_SAY_AS, {"interpret_as": SAY_AS_CHARACTERS})
+    item = speech(text=text, controls=(control,))
+
+    assert item.text[control.start : control.end] == "A R T"
+    assert item.text[control.end :].startswith(possessive)
 
 
 def test_leading_pause_is_legal() -> None:

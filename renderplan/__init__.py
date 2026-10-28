@@ -24,7 +24,15 @@ from .collection import (
     validate_renderplan_set,
     validate_renderplan_set_profile,
 )
-from .contracts import CONTRACTS, supported_contracts
+from .contracts import (
+    CONTRACTS,
+    CONTROL_EMPHASIS,
+    CONTROL_PRONUNCIATION,
+    CONTROL_PROSODY,
+    CONTROL_SAY_AS,
+    SAY_AS_CHARACTERS,
+    supported_contracts,
+)
 from .errors import CodecError, RenderPlanError, ValidationError
 from .model import (
     MANIFEST_FORMAT,
@@ -66,12 +74,17 @@ from .version import __version__
 
 __all__ = [
     "CONTRACTS",
+    "CONTROL_EMPHASIS",
+    "CONTROL_PRONUNCIATION",
+    "CONTROL_PROSODY",
+    "CONTROL_SAY_AS",
     "MANIFEST_FORMAT",
     "PLAN_FORMAT",
     "PREFLIGHT_FORMAT",
     "PROFILE_FORMAT",
     "RENDERPLAN_SET_FORMAT",
     "RENDERPLAN_SET_VERSION",
+    "SAY_AS_CHARACTERS",
     "AudioItem",
     "CapacityConstraint",
     "CodecError",

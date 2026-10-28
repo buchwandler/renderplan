@@ -7,6 +7,7 @@ from renderplan import (
     RenderProfile,
     RoleProfile,
     SourceSpan,
+    SpeechControl,
     SpeechItem,
 )
 
@@ -41,6 +42,23 @@ def test_speech_request_identity_excludes_number_and_provenance() -> None:
     renumbered = speech(5)
     different_source = speech(locator="opaque.source.address")
     assert first.segment_id == renumbered.segment_id == different_source.segment_id
+
+
+def test_say_as_control_changes_speech_request_identity() -> None:
+    plain = replace(
+        speech(),
+        text="A R T",
+        source=(SourceSpan("f000000.s000", 0, 5),),
+        segment_id=None,
+    ).with_identity()
+    controlled = replace(
+        plain,
+        controls=(SpeechControl(0, 5, "say_as", {"interpret_as": "characters"}),),
+        segment_id=None,
+    ).with_identity()
+
+    assert plain.text == controlled.text == "A R T"
+    assert plain.segment_id != controlled.segment_id
 
 
 def test_pause_is_part_of_plan_identity() -> None:

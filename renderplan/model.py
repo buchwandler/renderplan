@@ -247,6 +247,7 @@ class SpeechControl:
             raise ValidationError("control must satisfy 0 <= start < end")
         require_nonempty(self.name, "control.name")
         require_toml_value(self.params, "control.params")
+        validate_standard_control(self)
 
     def ordering_key(self) -> tuple[int, int, str, bytes]:
         return (self.start, self.end, self.name, canonical_json_bytes(self.params))
@@ -258,6 +259,28 @@ class SpeechControl:
             "name": self.name,
             "params": dict(self.params),
         }
+
+
+def validate_standard_control(control: SpeechControl) -> None:
+    """Validate parameters for known standard speech controls."""
+    if control.name != "say_as":
+        return
+
+    allowed = {"interpret_as", "format", "detail"}
+    unknown = set(control.params).difference(allowed)
+    if unknown:
+        raise ValidationError(
+            "say_as control has unsupported parameter(s): " + ", ".join(sorted(unknown))
+        )
+
+    interpret_as = control.params.get("interpret_as")
+    if not isinstance(interpret_as, str) or not interpret_as.strip():
+        raise ValidationError("say_as.interpret_as must be a non-empty string")
+
+    for name in ("format", "detail"):
+        value = control.params.get(name)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise ValidationError(f"say_as.{name} must be a non-empty string when present")
 
 
 @dataclass(frozen=True, slots=True)

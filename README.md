@@ -67,6 +67,26 @@ The destination start offset of source span `N` inside the request is the sum of
 
 `SpeechControl` is request-local and renderer-neutral: it carries `start`, `end`, `name`, and TOML-safe `params`. Initial semantic names include `pronunciation`, `prosody`, `emphasis`, `say_as`, and `extension:<name>`. Controls participate in `segment_id`; renderers decide support, and unsupported controls must fail preflight rather than be ignored. Control ranges may overlap only when the source semantics permit it. Engine-specific voice selection is resolved into the opaque logical role/binding; audio directives become `AudioItem`s.
 
+### Standard `say_as` semantics
+
+`SpeechControl(name="say_as")` requires a non-empty `interpret_as` string and accepts optional non-empty `format` and `detail` strings. The standard value `interpret_as = "characters"` means: speak the covered text as a sequence of separately pronounced characters, preserving the surrounding request as one continuous speech request when the engine can do so. It is portable intent; RenderPlan does not dictate an engine's realization or restrict future `interpret_as` values.
+
+For example, the following control covers exactly `A R T`:
+
+```toml
+[[flow.control]]
+start = 0
+end = 5
+name = "say_as"
+
+[flow.control.params]
+interpret_as = "characters"
+```
+
+The exact-range invariant is `speech.text[0:5] == "A R T"`. The control does not rewrite the canonical request text, prescribe spaces, hyphens, commas, SSML, phonemes, or pauses, and does not split a sentence or add a `PauseItem`. A renderer that does not support the requested semantics must reject the request during preflight rather than silently ignore the control.
+
+Do not store `A- R- T` in RenderPlan merely because one Kokoro frontend prefers that spelling; an engine may choose such a frontend-specific realization internally.
+
 Bindings copied into plans must be self-contained enough to execute without reopening the RenderProfile. This contract does not define renderer-specific path keys or local-asset resolution.
 This schema has no generic asset-reference type yet. A VoiceRender profile producer must refuse bindings that depend on profile-local or otherwise uncopied asset state; do not introduce renderer-specific asset-path keys into this shared contract.
 
