@@ -4,8 +4,8 @@ object_type: release_entry
 versioning:
   schema_version: 1
   revision: 1
-entry_id: entry-0003
-release_version: v0.2.0
+entry_id: entry-0001
+release_version: v0.2.1
 kind: added
 summary:
   Added optional parenthetical pause durations and parenthetical speech semantic
@@ -25,5 +25,5 @@ sources: []
 contributors: []
 breaking: false
 internal: false
-order: 3
+order: 1
 ---
