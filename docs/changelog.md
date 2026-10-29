@@ -5,6 +5,7 @@
 ### Added
 
 - Added RenderPlan v2 with compact, self-contained bindings keyed by speech role
+- Added optional parenthetical pause durations and parenthetical speech semantic ends
 
 ### Changed
 

@@ -197,6 +197,68 @@ def test_profile_roundtrip(tmp_path: Path) -> None:
     assert loaded.profile_id == value.profile_id
 
 
+def test_parenthetical_pause_policy_roundtrips(tmp_path: Path) -> None:
+    pauses = PausePolicy(
+        mode="manual",
+        durations_ms={
+            "clause": 180,
+            "parenthetical": 180,
+            "sentence": 500,
+            "paragraph": 800,
+        },
+    )
+    value = replace(profile(), pauses=pauses, profile_id=None).with_identity()
+    path = tmp_path / "parenthetical.renderprofile.toml"
+
+    save_profile(value, path)
+    loaded = load_profile(path)
+
+    assert loaded == value
+    assert loaded.pauses.durations_ms["parenthetical"] == 180
+    assert 'parenthetical = "180ms"' in path.read_text(encoding="utf-8")
+
+
+def test_profile_without_parenthetical_pause_preserves_identity(tmp_path: Path) -> None:
+    value = profile()
+    path = tmp_path / "without-parenthetical.renderprofile.toml"
+
+    save_profile(value, path)
+    loaded = load_profile(path)
+
+    assert loaded == value
+    assert loaded.profile_id == value.profile_id
+    assert "parenthetical" not in loaded.pauses.durations_ms
+
+
+def test_speech_item_parenthetical_semantic_end_roundtrips(tmp_path: Path) -> None:
+    item = replace(speech(), semantic_end="parenthetical", segment_id=None).with_identity()
+    value = plan(item)
+    path = tmp_path / "parenthetical.renderplan.toml"
+
+    save_plan(value, path)
+    loaded = load_plan(path)
+
+    assert loaded == value
+    assert loaded.speech[0].semantic_end == "parenthetical"
+    assert loaded.speech[0].planning_level == "sentence"
+    assert 'semantic_end = "parenthetical"' in path.read_text(encoding="utf-8")
+
+
+def test_parenthetical_is_not_a_planning_or_fallback_level() -> None:
+    with pytest.raises(ValidationError, match="planning.split"):
+        PlanningPolicy(split=cast(Any, "parenthetical"))
+    with pytest.raises(ValidationError, match="unknown capacity fallback"):
+        PlanningPolicy(capacity_fallback=(cast(Any, "parenthetical"),))
+
+
+def test_profile_rejects_parentheses_pause_spelling() -> None:
+    raw_profile = profile_to_dict(profile())
+    raw_profile["pauses"]["parentheses"] = "180ms"
+
+    with pytest.raises(CodecError, match="pauses contains unknown"):
+        profile_from_dict(raw_profile)
+
+
 def test_native_pause_mode_is_not_part_of_shared_profile_contract() -> None:
     with pytest.raises(ValidationError, match="manual or none"):
         PausePolicy(cast(Any, "native"))

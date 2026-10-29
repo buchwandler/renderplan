@@ -32,7 +32,9 @@ CheckStatus = Literal["ok", "too_long", "error"]
 _ALLOWED_TOKEN_FIELDS = frozenset({"span", "pos", "tag", "lemma", "morph"})
 _ALLOWED_SPLITS = frozenset({"paragraph", "sentence", "clause"})
 _ALLOWED_FALLBACKS = frozenset({"clause", "token"})
-_ALLOWED_SEMANTIC_ENDS = frozenset({"none", "clause", "sentence", "paragraph", "voice_change"})
+_ALLOWED_SEMANTIC_ENDS = frozenset(
+    {"none", "clause", "sentence", "paragraph", "parenthetical", "voice_change"}
+)
 _ALLOWED_SPLIT_REASONS = frozenset(
     {"policy", "capacity", "voice_change", "directive_change", "media"}
 )

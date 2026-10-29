@@ -30,7 +30,7 @@ or VoiceRender, or add execution/runtime orchestration.
 
 The package defines five TOML contract documents:
 
-1. `renderprofile.toml` — seeded by VoiceRender and user-owned. It contains opaque, self-contained renderer bindings, portable requirements, optional capacity descriptions, split/fallback policy, and explicit pause durations. Shared pause modes are `manual` and `none`; orchestration pass limits do not belong in this contract.
+1. `renderprofile.toml` — seeded by VoiceRender and user-owned. It contains opaque, self-contained renderer bindings, portable requirements, optional capacity descriptions, split/fallback policy, and explicit pause durations, including the optional `pauses.parenthetical` key. Shared pause modes are `manual` and `none`; orchestration pass limits do not belong in this contract.
 2. `renderplan.toml` — produced by UtterPlan. RenderPlan v2 stores each self-contained renderer binding once in a top-level `[bindings.<role>]` catalog, selected by each speech item's `role`. Loading restores the existing Python `SpeechItem.binding` API. Legacy v1 files with inline bindings remain readable; ordered flow, request IDs, and plan self-containment remain contractual.
 3. `renderplan-preflight.toml` — produced by VoiceRender for one exact RenderPlan. It has status `ok`, `replan`, or `reject` and refers to speech occurrences by `(segment_number, segment_id)`.
 4. `render-manifest.toml` — produced by VoiceRender. It binds WAV metadata to exact `(segment_number, segment_id)` plan occurrences. A complete manifest contains exactly every plan speech occurrence; an incomplete one may contain only occurrences from that plan.
@@ -93,6 +93,8 @@ This schema has no generic asset-reference type yet. A VoiceRender profile produ
 ## Identity and replan contract
 
 `segment_id` identifies the exact synthesis request: text, language, role, binding, tokens, and controls. It excludes display number and plan provenance such as source spans, split reason, planning level, and semantic end. Duplicate requests may therefore share a `segment_id`; `(segment_number, segment_id)` identifies each occurrence within a plan, report, or manifest.
+
+`SpeechItem.semantic_end` may name a `parenthetical` edge when a request ends at that semantic boundary. This value is metadata, not a planning level; RenderPlan does not infer parenthetical boundaries from speech text or split requests itself.
 
 `plan_id` identifies the complete ordered execution flow, including speech numbers/order, request IDs, provenance and planning semantics, preflight requirements, every pause, and every audio item. Producer package versions do not change semantic profile or plan identity. Exact source-file bytes are not included in RenderPlan identity.
 

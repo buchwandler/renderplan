@@ -239,6 +239,7 @@ def profile_from_dict(raw: Mapping[str, Any]) -> RenderProfile:
         "strong",
         "x_strong",
         "clause",
+        "parenthetical",
         "sentence",
         "paragraph",
         "voice_change",
