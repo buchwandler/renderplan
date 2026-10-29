@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -56,7 +57,7 @@ from renderplan import (
     validate_set_chapter_plan,
 )
 from renderplan.cli import main
-from renderplan.codec import plan_from_dict, profile_from_dict, profile_to_dict
+from renderplan.codec import plan_from_dict, plan_to_dict, profile_from_dict, profile_to_dict
 
 SOURCE_ID = "sha256:" + "1" * 64
 OTHER_SOURCE_ID = "sha256:" + "4" * 64
@@ -221,6 +222,142 @@ def test_renderplan_roundtrip_with_controls_and_generic_binding(tmp_path: Path) 
     assert loaded.speech[0].wav == "000001.wav"
     assert loaded.speech[0].binding == generic_binding
     assert loaded.speech[0].controls[0].params == {"level": "moderate"}
+
+
+def test_renderplan_v2_interns_binding_for_many_speech_items(tmp_path: Path) -> None:
+    value = plan(*(speech(number, f"Sentence {number}.") for number in range(1, 198)))
+    path = tmp_path / "many.renderplan.toml"
+    save_plan(value, path)
+
+    text = path.read_text(encoding="utf-8")
+    loaded = load_plan(path)
+    assert text.count("[bindings.narrator]") == 1
+    assert "[flow.binding]" not in text
+    assert text.count('role = "narrator"') == 197
+    assert loaded == value
+    assert all(item.binding == BINDING for item in loaded.speech)
+
+
+def test_renderplan_v2_catalog_supports_multiple_roles(tmp_path: Path) -> None:
+    bindings = {
+        "narrator": BINDING,
+        "host": {"renderer": "piper", "voice": "en_US-lessac-medium"},
+        "guest": {"renderer": "kitten", "voice": "voice-b"},
+    }
+    profile_value = RenderProfile(
+        default_role="narrator",
+        roles={role: RoleProfile("en-US", binding) for role, binding in bindings.items()},
+    ).with_identity()
+    items = tuple(
+        replace(
+            speech(number, f"Speech for {role}.", binding=binding),
+            role=role,
+            segment_id=None,
+        ).with_identity()
+        for number, (role, binding) in enumerate(bindings.items(), start=1)
+    )
+    value = plan(*items, profile_value=profile_value)
+    value.validate_against_profile(profile_value)
+    path = tmp_path / "multi-role.renderplan.toml"
+    save_plan(value, path)
+
+    text = path.read_text(encoding="utf-8")
+    loaded = load_plan(path)
+    assert all(text.count(f"[bindings.{role}]") == 1 for role in bindings)
+    assert "[flow.binding]" not in text
+    assert {item.role: item.binding for item in loaded.speech} == bindings
+    assert loaded == value
+    loaded.validate_against_profile(profile_value)
+
+
+def test_renderplan_v2_rejects_conflicting_bindings_for_one_role() -> None:
+    first = speech(1, "First.")
+    second = speech(2, "Second.", binding={**BINDING, "voice": "other"})
+    with pytest.raises(ValidationError, match="multiple bindings"):
+        plan(first, second)
+
+
+def test_renderplan_v2_rejects_missing_unused_or_invalid_catalog_entries() -> None:
+    value = plan(speech())
+    raw = plan_to_dict(value)
+
+    missing = deepcopy(raw)
+    missing.pop("bindings")
+    with pytest.raises(CodecError, match="no matching plan binding"):
+        plan_from_dict(missing)
+
+    unused = deepcopy(raw)
+    unused["bindings"]["unused"] = {"renderer": "other"}
+    with pytest.raises(CodecError, match="unused role"):
+        plan_from_dict(unused)
+
+    empty = deepcopy(raw)
+    empty["bindings"]["narrator"] = {}
+    with pytest.raises(CodecError, match="must not be empty"):
+        plan_from_dict(empty)
+
+    non_mapping = deepcopy(raw)
+    non_mapping["bindings"]["narrator"] = []
+    with pytest.raises(CodecError, match="must be a TOML table"):
+        plan_from_dict(non_mapping)
+
+    invalid_catalog = deepcopy(raw)
+    invalid_catalog["bindings"] = []
+    with pytest.raises(CodecError, match="bindings must be a TOML table"):
+        plan_from_dict(invalid_catalog)
+
+
+def test_renderplan_v2_rejects_inline_binding_as_second_source() -> None:
+    raw = plan_to_dict(plan(speech()))
+    raw["flow"][0]["binding"] = {"renderer": "different"}
+    with pytest.raises(CodecError, match="unknown field.*binding"):
+        plan_from_dict(raw)
+
+
+def test_legacy_renderplan_v1_identity_and_inline_binding_roundtrip(tmp_path: Path) -> None:
+    current = plan(speech())
+    legacy = replace(current, schema_version=1, plan_id=None).with_identity()
+    path = tmp_path / "legacy.renderplan.toml"
+    save_plan(legacy, path)
+
+    text = path.read_text(encoding="utf-8")
+    loaded = load_plan(path)
+    assert loaded.schema_version == 1
+    assert loaded.plan_id == legacy.plan_id
+    assert loaded.speech[0].binding == BINDING
+    assert "[flow.binding]" in text
+    assert "[bindings." not in text
+    assert plan_from_dict(plan_to_dict(loaded)) == loaded
+
+
+def test_segment_identity_is_unchanged_between_plan_schema_versions() -> None:
+    current = plan(speech())
+    legacy = replace(current, schema_version=1, plan_id=None).with_identity()
+
+    assert legacy.speech[0].segment_id == current.speech[0].segment_id
+    assert legacy.plan_id != current.plan_id
+
+
+def test_v2_roundtrip_preserves_uppercase_token_lemma(tmp_path: Path) -> None:
+    tokens = TokenBundle(
+        span=((0, 1), (2, 3), (4, 5)),
+        lemma=((0, "A"), (1, "R"), (2, "T")),
+    )
+    value = plan(speech(text="A R T", tokens=tokens))
+    path = tmp_path / "uppercase-lemma.renderplan.toml"
+    save_plan(value, path)
+
+    text = path.read_text(encoding="utf-8")
+    loaded = load_plan(path)
+    assert 'lemma = [[0, "A"], [1, "R"], [2, "T"]]' in text
+    assert loaded.speech[0].tokens is not None
+    assert loaded.speech[0].tokens.lemma == ((0, "A"), (1, "R"), (2, "T"))
+
+
+def test_v2_without_speech_omits_bindings_catalog() -> None:
+    item = speech()
+    value = plan(flow=(AudioItem("media/intro.wav", item.source),))
+    assert "bindings" not in plan_to_dict(value)
 
 
 @pytest.mark.parametrize(
@@ -681,7 +818,7 @@ def test_cli_inspect_summaries_are_read_only_and_informative(
 def test_contract_registry_is_complete_and_immutable() -> None:
     expected = {
         "renderprofile": 1,
-        "renderplan": 1,
+        "renderplan": 2,
         "renderplan-preflight": 1,
         "render-manifest": 1,
         "renderplan-set": 1,

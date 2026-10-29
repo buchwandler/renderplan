@@ -17,7 +17,11 @@ PROFILE_FORMAT = "renderprofile"
 PLAN_FORMAT = "renderplan"
 PREFLIGHT_FORMAT = "renderplan-preflight"
 MANIFEST_FORMAT = "render-manifest"
-SCHEMA_VERSION = 1
+PROFILE_SCHEMA_VERSION = 1
+PLAN_SCHEMA_VERSION = 2
+LEGACY_PLAN_SCHEMA_VERSION = 1
+PREFLIGHT_SCHEMA_VERSION = 1
+MANIFEST_SCHEMA_VERSION = 1
 
 SplitLevel = Literal["paragraph", "sentence", "clause"]
 FallbackLevel = Literal["clause", "token"]
@@ -179,10 +183,10 @@ class RenderProfile:
     profile_id: str | None = None
     producer: Producer | None = None
     format: str = PROFILE_FORMAT
-    schema_version: int = SCHEMA_VERSION
+    schema_version: int = PROFILE_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        if self.format != PROFILE_FORMAT or self.schema_version != SCHEMA_VERSION:
+        if self.format != PROFILE_FORMAT or self.schema_version != PROFILE_SCHEMA_VERSION:
             raise ValidationError("unsupported render profile format/schema")
         if not self.roles:
             raise ValidationError("render profile requires at least one role")
@@ -542,10 +546,13 @@ class RenderPlan:
     plan_id: str | None = None
     producer: Producer | None = None
     format: str = PLAN_FORMAT
-    schema_version: int = SCHEMA_VERSION
+    schema_version: int = PLAN_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        if self.format != PLAN_FORMAT or self.schema_version != SCHEMA_VERSION:
+        if self.format != PLAN_FORMAT or self.schema_version not in {
+            LEGACY_PLAN_SCHEMA_VERSION,
+            PLAN_SCHEMA_VERSION,
+        }:
             raise ValidationError("unsupported render plan format/schema")
         require_sha256_id(self.source_plan_id, "source_plan_id")
         require_sha256_id(self.render_profile_id, "render_profile_id")
@@ -569,6 +576,15 @@ class RenderPlan:
                     raise ValidationError(f"flow[{index}] audio must have audio_id")
             else:
                 raise ValidationError(f"flow[{index}] has an unsupported item type")
+        if self.schema_version == PLAN_SCHEMA_VERSION:
+            bindings_by_role: dict[str, dict[str, Any]] = {}
+            for speech in (item for item in self.flow if isinstance(item, SpeechItem)):
+                binding = dict(speech.binding)
+                previous = bindings_by_role.setdefault(speech.role, binding)
+                if previous != binding:
+                    raise ValidationError(
+                        f"speech role {speech.role!r} resolves to multiple bindings in RenderPlan v2"
+                    )
         if self.plan_id is not None:
             require_sha256_id(self.plan_id, "plan_id")
             if self.plan_id != self.computed_id():
@@ -761,10 +777,10 @@ class PreflightReport:
     producer: Producer | None = None
     report_id: str | None = None
     format: str = PREFLIGHT_FORMAT
-    schema_version: int = SCHEMA_VERSION
+    schema_version: int = PREFLIGHT_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        if self.format != PREFLIGHT_FORMAT or self.schema_version != SCHEMA_VERSION:
+        if self.format != PREFLIGHT_FORMAT or self.schema_version != PREFLIGHT_SCHEMA_VERSION:
             raise ValidationError("unsupported preflight format/schema")
         require_sha256_id(self.render_plan_id, "render_plan_id")
         require_sha256_id(self.source_plan_id, "source_plan_id")
@@ -911,10 +927,10 @@ class RenderManifest:
     producer: Producer | None = None
     manifest_id: str | None = None
     format: str = MANIFEST_FORMAT
-    schema_version: int = SCHEMA_VERSION
+    schema_version: int = MANIFEST_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        if self.format != MANIFEST_FORMAT or self.schema_version != SCHEMA_VERSION:
+        if self.format != MANIFEST_FORMAT or self.schema_version != MANIFEST_SCHEMA_VERSION:
             raise ValidationError("unsupported render manifest format/schema")
         require_sha256_id(self.render_plan_id, "render_plan_id")
         occurrences = [

@@ -11,10 +11,13 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10
     tomllib = importlib.import_module("tomli")
 
 from ._toml import dumps as toml_dumps
-from .errors import CodecError
+from .errors import CodecError, ValidationError
+from .identity import require_toml_value
 from .model import (
+    LEGACY_PLAN_SCHEMA_VERSION,
     MANIFEST_FORMAT,
     PLAN_FORMAT,
+    PLAN_SCHEMA_VERSION,
     PREFLIGHT_FORMAT,
     PROFILE_FORMAT,
     AudioItem,
@@ -283,19 +286,52 @@ def profile_to_dict(profile: RenderProfile) -> dict[str, Any]:
 
 
 def plan_from_dict(raw: Mapping[str, Any]) -> RenderPlan:
-    _check_keys(
-        raw,
-        {
-            "format",
-            "schema_version",
-            "plan_id",
-            "source_plan_id",
-            "render_profile_id",
-            "producer",
-            "flow",
-        },
-        "renderplan",
-    )
+    version = _integer(raw.get("schema_version"), "schema_version")
+    if version == LEGACY_PLAN_SCHEMA_VERSION:
+        return _plan_v1_from_dict(raw)
+    if version == PLAN_SCHEMA_VERSION:
+        return _plan_v2_from_dict(raw)
+    raise CodecError(f"unsupported renderplan schema_version: {version}")
+
+
+def _plan_v1_from_dict(raw: Mapping[str, Any]) -> RenderPlan:
+    return _plan_from_dict(raw, LEGACY_PLAN_SCHEMA_VERSION)
+
+
+def _plan_v2_from_dict(raw: Mapping[str, Any]) -> RenderPlan:
+    return _plan_from_dict(raw, PLAN_SCHEMA_VERSION)
+
+
+def _plan_from_dict(raw: Mapping[str, Any], version: int) -> RenderPlan:
+    allowed_fields = {
+        "format",
+        "schema_version",
+        "plan_id",
+        "source_plan_id",
+        "render_profile_id",
+        "producer",
+        "flow",
+    }
+    if version == PLAN_SCHEMA_VERSION:
+        allowed_fields.add("bindings")
+    _check_keys(raw, allowed_fields, "renderplan")
+
+    bindings: dict[str, dict[str, Any]] = {}
+    if version == PLAN_SCHEMA_VERSION:
+        bindings_raw = _mapping(raw.get("bindings", {}), "bindings")
+        for role, binding_value in bindings_raw.items():
+            if not isinstance(role, str) or not role:
+                raise CodecError("bindings must use non-empty role names")
+            field = f"bindings.{role}"
+            binding = _mapping(binding_value, field)
+            if not binding:
+                raise CodecError(f"{field} must not be empty")
+            try:
+                require_toml_value(binding, field)
+            except ValidationError as exc:
+                raise CodecError(str(exc)) from exc
+            bindings[role] = dict(binding)
+
     flow_raw = raw.get("flow")
     if not isinstance(flow_raw, list):
         raise CodecError("flow must be an array of tables")
@@ -305,38 +341,43 @@ def plan_from_dict(raw: Mapping[str, Any]) -> RenderPlan:
         item = _mapping(item_value, field)
         kind = item.get("kind")
         if kind == "speech":
-            _check_keys(
-                item,
-                {
-                    "kind",
-                    "number",
-                    "segment_id",
-                    "wav",
-                    "text",
-                    "language",
-                    "role",
-                    "source",
-                    "split_reason",
-                    "planning_level",
-                    "semantic_end",
-                    "preflight_required",
-                    "binding",
-                    "token",
-                    "control",
-                },
-                field,
-            )
+            speech_fields = {
+                "kind",
+                "number",
+                "segment_id",
+                "wav",
+                "text",
+                "language",
+                "role",
+                "source",
+                "split_reason",
+                "planning_level",
+                "semantic_end",
+                "preflight_required",
+                "token",
+                "control",
+            }
+            if version == LEGACY_PLAN_SCHEMA_VERSION:
+                speech_fields.add("binding")
+            _check_keys(item, speech_fields, field)
             number = _integer(item.get("number"), f"{field}.number")
             expected_wav = f"{number:06d}.wav"
             if item.get("wav") != expected_wav:
                 raise CodecError(f"speech.wav must be {expected_wav!r}")
+            role = str(item.get("role", ""))
+            if version == PLAN_SCHEMA_VERSION:
+                role_binding = bindings.get(role)
+                if role_binding is None:
+                    raise CodecError(f"{field}.role has no matching plan binding: {role!r}")
+            else:
+                role_binding = dict(_mapping(item.get("binding"), f"{field}.binding"))
             flow.append(
                 SpeechItem(
                     number=number,
                     text=str(item.get("text", "")),
                     language=str(item.get("language", "")),
-                    role=str(item.get("role", "")),
-                    binding=dict(_mapping(item.get("binding"), f"{field}.binding")),
+                    role=role,
+                    binding=dict(role_binding),
                     source=_source_spans(item.get("source", []), f"{field}.source"),
                     split_reason=str(item.get("split_reason", "policy")),
                     planning_level=str(item.get("planning_level", "sentence")),
@@ -371,6 +412,13 @@ def plan_from_dict(raw: Mapping[str, Any]) -> RenderPlan:
             )
         else:
             raise CodecError(f"{field}.kind is unsupported: {kind!r}")
+
+    if version == PLAN_SCHEMA_VERSION:
+        used_roles = {item.role for item in flow if isinstance(item, SpeechItem)}
+        unused_roles = sorted(set(bindings).difference(used_roles))
+        if unused_roles:
+            raise CodecError(f"bindings contains unused role(s): {', '.join(unused_roles)}")
+
     return RenderPlan(
         source_plan_id=str(raw.get("source_plan_id", "")),
         render_profile_id=str(raw.get("render_profile_id", "")),
@@ -378,11 +426,41 @@ def plan_from_dict(raw: Mapping[str, Any]) -> RenderPlan:
         plan_id=cast(str | None, raw.get("plan_id")),
         producer=_producer(raw.get("producer")),
         format=str(raw.get("format", "")),
-        schema_version=_integer(raw.get("schema_version"), "schema_version"),
+        schema_version=version,
     )
 
 
+def _bindings_by_role(plan: RenderPlan) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for speech in plan.speech:
+        binding = dict(speech.binding)
+        previous = result.get(speech.role)
+        if previous is None:
+            result[speech.role] = binding
+        elif previous != binding:
+            raise CodecError(
+                f"role {speech.role!r} has multiple bindings and cannot be encoded as RenderPlan v2"
+            )
+    return dict(sorted(result.items()))
+
+
 def plan_to_dict(plan: RenderPlan) -> dict[str, Any]:
+    if plan.schema_version == LEGACY_PLAN_SCHEMA_VERSION:
+        return _plan_v1_to_dict(plan)
+    if plan.schema_version == PLAN_SCHEMA_VERSION:
+        return _plan_v2_to_dict(plan)
+    raise CodecError(f"unsupported renderplan schema_version: {plan.schema_version}")
+
+
+def _plan_v1_to_dict(plan: RenderPlan) -> dict[str, Any]:
+    return _plan_to_dict(plan, LEGACY_PLAN_SCHEMA_VERSION)
+
+
+def _plan_v2_to_dict(plan: RenderPlan) -> dict[str, Any]:
+    return _plan_to_dict(plan, PLAN_SCHEMA_VERSION)
+
+
+def _plan_to_dict(plan: RenderPlan, version: int) -> dict[str, Any]:
     data: dict[str, Any] = {
         "format": plan.format,
         "schema_version": plan.schema_version,
@@ -392,6 +470,11 @@ def plan_to_dict(plan: RenderPlan) -> dict[str, Any]:
     }
     if plan.producer is not None:
         data["producer"] = plan.producer.to_dict()
+    if version == PLAN_SCHEMA_VERSION:
+        bindings = _bindings_by_role(plan)
+        if bindings:
+            data["bindings"] = bindings
+
     flow: list[dict[str, Any]] = []
     for item in plan.flow:
         if isinstance(item, SpeechItem):
@@ -408,8 +491,9 @@ def plan_to_dict(plan: RenderPlan) -> dict[str, Any]:
                 "planning_level": item.planning_level,
                 "semantic_end": item.semantic_end,
                 "preflight_required": item.preflight_required,
-                "binding": dict(item.binding),
             }
+            if version == LEGACY_PLAN_SCHEMA_VERSION:
+                entry["binding"] = dict(item.binding)
             if item.tokens is not None:
                 entry["token"] = item.tokens.to_dict()
             if item.controls:
